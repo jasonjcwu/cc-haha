@@ -271,6 +271,17 @@ export const en = {
   'settings.claudeOfficialLogin.errorPrefix': 'Error: ',
   'settings.claudeOfficialLogin.openBrowserFailed': 'Failed to open browser; please visit the authorization URL manually.',
 
+  // Settings > ChatGPT Official Login
+  'settings.chatgptOfficialLogin.intro': 'Sign in with ChatGPT to use GPT models from desktop sessions.',
+  'settings.chatgptOfficialLogin.loginButton': 'Sign in with ChatGPT',
+  'settings.chatgptOfficialLogin.loginStarting': 'Starting sign-in...',
+  'settings.chatgptOfficialLogin.logoutButton': 'Sign out',
+  'settings.chatgptOfficialLogin.logoutProcessing': 'Signing out...',
+  'settings.chatgptOfficialLogin.loggedInPrefix': 'Signed in as',
+  'settings.chatgptOfficialLogin.accountUnknown': 'ChatGPT account',
+  'settings.chatgptOfficialLogin.openBrowserFailed': 'Unable to open browser. Copy the authorization URL from server logs and open it manually.',
+  'settings.chatgptOfficialLogin.errorPrefix': 'ChatGPT OAuth error: ',
+
   // Settings > Providers
   'settings.providers.title': 'Providers',
   'settings.providers.description': 'Manage API providers for model access.',

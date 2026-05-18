@@ -273,6 +273,17 @@ export const zh: Record<TranslationKey, string> = {
   'settings.claudeOfficialLogin.errorPrefix': '错误:',
   'settings.claudeOfficialLogin.openBrowserFailed': '无法打开浏览器,请手动访问授权链接。',
 
+  // Settings > ChatGPT Official Login
+  'settings.chatgptOfficialLogin.intro': '登录 ChatGPT 后,就可以在桌面端会话里使用 GPT 模型。',
+  'settings.chatgptOfficialLogin.loginButton': '登录 ChatGPT',
+  'settings.chatgptOfficialLogin.loginStarting': '正在启动登录...',
+  'settings.chatgptOfficialLogin.logoutButton': '退出登录',
+  'settings.chatgptOfficialLogin.logoutProcessing': '正在退出...',
+  'settings.chatgptOfficialLogin.loggedInPrefix': '已登录',
+  'settings.chatgptOfficialLogin.accountUnknown': 'ChatGPT 账号',
+  'settings.chatgptOfficialLogin.openBrowserFailed': '无法打开浏览器。请从服务端日志复制授权链接并手动打开。',
+  'settings.chatgptOfficialLogin.errorPrefix': 'ChatGPT OAuth 错误:',
+
   // Settings > Providers
   'settings.providers.title': '服务商',
   'settings.providers.description': '管理 API 服务商以访问模型。',
