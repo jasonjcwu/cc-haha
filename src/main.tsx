@@ -44,7 +44,7 @@ import { loadRemoteManagedSettings, refreshRemoteManagedSettings } from './servi
 import type { ToolInputJSONSchema } from './Tool.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
-import { canUserConfigureAdvisor, getInitialAdvisorSetting, isAdvisorEnabled, isValidAdvisorModel, modelSupportsAdvisor } from './utils/advisor.js';
+import { canUseAdvisorWithBaseModel, canUserConfigureAdvisor, getInitialAdvisorSetting, isAdvisorEnabled, isAdvisorModelAllowed } from './utils/advisor.js';
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { count, uniq } from './utils/array.js';
 import { installAsciicastRecorder } from './utils/asciicast.js';
@@ -2142,12 +2142,12 @@ async function run(): Promise<CommanderCommand> {
       }).advisor : undefined;
       if (advisorOption) {
         logForDebugging(`[AdvisorTool] --advisor ${advisorOption}`);
-        if (!modelSupportsAdvisor(resolvedInitialModel)) {
+        if (!canUseAdvisorWithBaseModel(resolvedInitialModel)) {
           process.stderr.write(chalk.red(`Error: The model "${resolvedInitialModel}" does not support the advisor tool.\n`));
           process.exit(1);
         }
         const normalizedAdvisorModel = normalizeModelStringForAPI(parseUserSpecifiedModel(advisorOption));
-        if (!isValidAdvisorModel(normalizedAdvisorModel)) {
+        if (!isAdvisorModelAllowed(normalizedAdvisorModel)) {
           process.stderr.write(chalk.red(`Error: The model "${advisorOption}" cannot be used as an advisor.\n`));
           process.exit(1);
         }

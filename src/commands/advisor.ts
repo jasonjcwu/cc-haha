@@ -1,9 +1,9 @@
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
 import {
+  canUseAdvisorWithBaseModel,
   canUserConfigureAdvisor,
-  isValidAdvisorModel,
-  modelSupportsAdvisor,
+  isAdvisorModelAllowed,
 } from '../utils/advisor.js'
 import {
   getDefaultMainLoopModelSetting,
@@ -28,7 +28,7 @@ const call: LocalCommandCall = async (args, context) => {
           'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor opus").',
       }
     }
-    if (!modelSupportsAdvisor(baseModel)) {
+    if (!canUseAdvisorWithBaseModel(baseModel)) {
       return {
         type: 'text',
         value: `Advisor: ${current} (inactive)\nThe current model (${baseModel}) does not support advisors.`,
@@ -67,7 +67,7 @@ const call: LocalCommandCall = async (args, context) => {
     }
   }
 
-  if (!isValidAdvisorModel(resolvedModel)) {
+  if (!isAdvisorModelAllowed(resolvedModel)) {
     return {
       type: 'text',
       value: `The model ${arg} (${resolvedModel}) cannot be used as an advisor`,

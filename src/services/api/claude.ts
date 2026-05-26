@@ -147,11 +147,13 @@ import { addToTotalSessionCost } from "src/cost-tracker.js";
 import { getFeatureValue_CACHED_MAY_BE_STALE } from "src/services/analytics/growthbook.js";
 import type { AgentId } from "src/types/ids.js";
 import {
+  ADVISOR_CLIENT_TOOL_NAME,
   ADVISOR_TOOL_INSTRUCTIONS,
+  canUseAdvisorWithBaseModel,
   getExperimentAdvisorModels,
   isAdvisorEnabled,
-  isValidAdvisorModel,
-  modelSupportsAdvisor,
+  isAdvisorModelAllowed,
+  usesServerSideAdvisorTool,
 } from "src/utils/advisor.js";
 import { getAgentContext } from "src/utils/agentContext.js";
 import { isClaudeAISubscriber } from "src/utils/auth.js";
@@ -1120,10 +1122,9 @@ async function* queryModel(
     options.querySource === "verification_agent";
   const betas = getMergedBetas(options.model, { isAgenticQuery });
 
-  // Always send the advisor beta header when advisor is enabled, so
-  // non-agentic queries (compact, side_question, extract_memories, etc.)
-  // can parse advisor server_tool_use blocks already in the conversation history.
-  if (isAdvisorEnabled()) {
+  // Server-side advisor blocks require the beta header. Client-side advisor
+  // uses regular tool_use/tool_result pairs on third-party endpoints.
+  if (isAdvisorEnabled() && usesServerSideAdvisorTool()) {
     betas.push(ADVISOR_BETA_HEADER);
   }
 
@@ -1148,11 +1149,11 @@ async function* queryModel(
       const normalizedAdvisorModel = normalizeModelStringForAPI(
         parseUserSpecifiedModel(advisorOption),
       );
-      if (!modelSupportsAdvisor(options.model)) {
+      if (!canUseAdvisorWithBaseModel(options.model)) {
         logForDebugging(
           `[AdvisorTool] Skipping advisor - base model ${options.model} does not support advisor`,
         );
-      } else if (!isValidAdvisorModel(normalizedAdvisorModel)) {
+      } else if (!isAdvisorModelAllowed(normalizedAdvisorModel)) {
         logForDebugging(
           `[AdvisorTool] Skipping advisor - ${normalizedAdvisorModel} is not a valid advisor model`,
         );
@@ -1282,8 +1283,13 @@ async function* queryModel(
   // Note: We pass the full `tools` list (not filteredTools) to toolToAPISchema so that
   // ToolSearchTool's prompt can list ALL available MCP tools. The filtering only affects
   // which tools are actually sent to the API, not what the model sees in tool descriptions.
+  const toolsForAPISchemas = advisorModel
+    ? filteredTools
+    : filteredTools.filter(
+        (tool) => !toolMatchesName(tool, ADVISOR_CLIENT_TOOL_NAME),
+      );
   const toolSchemas = await Promise.all(
-    filteredTools.map((tool) =>
+    toolsForAPISchemas.map((tool) =>
       toolToAPISchema(tool, {
         getToolPermissionContext: options.getToolPermissionContext,
         tools,
@@ -1433,20 +1439,15 @@ async function* queryModel(
   // Note: The actual new_context message extraction is done in sessionTracing.ts using
   // hash-based tracking per querySource (agent) from the messagesForAPI array
   const extraToolSchemas = [...(options.extraToolSchemas ?? [])];
-  if (advisorModel) {
-    // Use a regular tool definition for third-party API compatibility.
-    // The original 'advisor_20260301' server tool type only works with
-    // Anthropic's first-party API. Regular tools work with any provider.
+  if (advisorModel && usesServerSideAdvisorTool()) {
+    // Server tools must be in the tools array by API contract. Appended after
+    // toolSchemas (which carries the cache_control marker) so toggling /advisor
+    // only churns the small suffix, not the cached prefix.
     extraToolSchemas.push({
-      type: 'custom',
-      name: 'advisor',
-      description: 'Consult a more capable model for strategic guidance. Call BEFORE substantive work.',
-      input_schema: {
-        type: 'object',
-        properties: {},
-        required: [],
-      },
-    } as unknown as BetaToolUnion)
+      type: "advisor_20260301",
+      name: "advisor",
+      model: advisorModel,
+    } as unknown as BetaToolUnion);
   }
   const allTools = [...toolSchemas, ...extraToolSchemas];
 
@@ -2069,6 +2070,18 @@ async function* queryModel(
                   ...part.content_block,
                   input: "",
                 };
+                if ((part.content_block.name as string) === "advisor") {
+                  isAdvisorInProgress = true;
+                  logForDebugging(`[AdvisorTool] Advisor tool called`);
+                  logEvent("tengu_advisor_tool_call", {
+                    model:
+                      options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                    advisor_model: (advisorModel ??
+                      "unknown") as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                    execution:
+                      "client" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                  });
+                }
                 break;
               case "server_tool_use":
                 contentBlocks[part.index] = {

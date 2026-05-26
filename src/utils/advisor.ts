@@ -1,8 +1,10 @@
 import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import { shouldIncludeFirstPartyOnlyBetas } from './betas.js'
 import { isEnvTruthy } from './envUtils.js'
+import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './model/providers.js'
 import { getInitialSettings } from './settings/settings.js'
+
+export const ADVISOR_CLIENT_TOOL_NAME = 'advisor'
 
 // The SDK does not yet have types for advisor blocks.
 // TODO(hackyon): Migrate to the real anthropic SDK types when this feature ships publicly
@@ -57,12 +59,18 @@ function getAdvisorConfig(): AdvisorConfig {
   )
 }
 
+export function usesServerSideAdvisorTool(): boolean {
+  return (
+    getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
+  )
+}
+
+export function usesClientSideAdvisorTool(): boolean {
+  return !usesServerSideAdvisorTool()
+}
+
 export function isAdvisorEnabled(): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADVISOR_TOOL)) {
-    return false
-  }
-  // The advisor beta header is first-party only (Bedrock/Vertex 400 on it).
-  if (!shouldIncludeFirstPartyOnlyBetas()) {
     return false
   }
   return getAdvisorConfig().enabled ?? false
@@ -95,6 +103,13 @@ export function modelSupportsAdvisor(model: string): boolean {
   )
 }
 
+export function canUseAdvisorWithBaseModel(model: string): boolean {
+  if (usesClientSideAdvisorTool()) {
+    return true
+  }
+  return modelSupportsAdvisor(model)
+}
+
 // @[MODEL LAUNCH]: Add the new model if it can serve as an advisor model.
 export function isValidAdvisorModel(model: string): boolean {
   const m = model.toLowerCase()
@@ -103,6 +118,13 @@ export function isValidAdvisorModel(model: string): boolean {
     m.includes('sonnet-4-6') ||
     process.env.USER_TYPE === 'ant'
   )
+}
+
+export function isAdvisorModelAllowed(model: string): boolean {
+  if (usesClientSideAdvisorTool()) {
+    return model.trim().length > 0
+  }
+  return isValidAdvisorModel(model)
 }
 
 export function getInitialAdvisorSetting(): string | undefined {
@@ -143,3 +165,14 @@ On tasks longer than a few steps, call advisor at least once before committing t
 Give the advice serious weight. If you follow a step and it fails empirically, or you have primary-source evidence that contradicts a specific claim (the file says X, the code does Y), adapt. A passing self-test is not evidence the advice is wrong -- it's evidence your test doesn't check what the advice is checking.
 
 If you've already retrieved data pointing one way and the advisor points another: don't silently switch. Surface the conflict in one more advisor call -- "I found X, you suggest Y, which constraint breaks the tie?" The advisor saw your evidence but may have underweighted it; a reconcile call is cheaper than committing to the wrong branch.`
+
+export const ADVISOR_CLIENT_SYSTEM_PROMPT = `You are a senior advisor reviewing an agent's work in progress.
+
+The messages below are the agent's live session: the user's request, the agent's reasoning, tool calls, and tool results. The agent has just invoked you for strategic guidance.
+
+Respond with concise, actionable advice:
+- Name the highest-risk assumption or gap you see
+- Suggest what to verify before committing to an approach
+- Call out if the agent should stop, pivot, or finish
+
+Do not call tools. Do not rewrite the task. Do not produce code unless a tiny illustrative snippet is essential.`
