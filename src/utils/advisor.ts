@@ -1,6 +1,21 @@
 import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { isEnvTruthy } from './envUtils.js'
+import {
+  getDefaultOpusModel,
+  normalizeModelStringForAPI,
+  parseUserSpecifiedModel,
+} from './model/model.js'
+import {
+  getDefaultOpusModel,
+  normalizeModelStringForAPI,
+  parseUserSpecifiedModel,
+} from './model/model.js'
+import {
+  getDefaultOpusModel,
+  normalizeModelStringForAPI,
+  parseUserSpecifiedModel,
+} from './model/model.js'
 import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './model/providers.js'
 import { getInitialSettings } from './settings/settings.js'
 
@@ -73,11 +88,11 @@ export function isAdvisorEnabled(): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADVISOR_TOOL)) {
     return false
   }
-  return getAdvisorConfig().enabled ?? false
+  return true
 }
 
 export function canUserConfigureAdvisor(): boolean {
-  return isAdvisorEnabled() && (getAdvisorConfig().canUserConfigure ?? false)
+  return isAdvisorEnabled()
 }
 
 export function getExperimentAdvisorModels():
@@ -127,11 +142,30 @@ export function isAdvisorModelAllowed(model: string): boolean {
   return isValidAdvisorModel(model)
 }
 
-export function getInitialAdvisorSetting(): string | undefined {
+/** Provider-managed default: `opus` alias / `ANTHROPIC_DEFAULT_OPUS_MODEL`. */
+export function getDefaultAdvisorModel(): string {
+  return normalizeModelStringForAPI(getDefaultOpusModel())
+}
+
+/**
+ * User-configured advisor model, or the provider opus default when unset.
+ * Main-loop model is never used as a fallback.
+ */
+export function getEffectiveAdvisorModel(
+  userAdvisor?: string | null,
+): string | undefined {
   if (!isAdvisorEnabled()) {
     return undefined
   }
-  return getInitialSettings().advisorModel
+  const configured = userAdvisor ?? getInitialSettings().advisorModel
+  if (configured) {
+    return normalizeModelStringForAPI(parseUserSpecifiedModel(configured))
+  }
+  return getDefaultAdvisorModel()
+}
+
+export function getInitialAdvisorSetting(): string | undefined {
+  return getEffectiveAdvisorModel()
 }
 
 export function getAdvisorUsage(

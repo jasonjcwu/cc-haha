@@ -150,6 +150,7 @@ import {
   ADVISOR_CLIENT_TOOL_NAME,
   ADVISOR_TOOL_INSTRUCTIONS,
   canUseAdvisorWithBaseModel,
+  getEffectiveAdvisorModel,
   getExperimentAdvisorModels,
   isAdvisorEnabled,
   isAdvisorModelAllowed,

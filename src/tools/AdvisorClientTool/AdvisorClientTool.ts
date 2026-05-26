@@ -8,7 +8,7 @@ import {
   usesClientSideAdvisorTool,
 } from '../../utils/advisor.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { logEvent } from '../../utils/log.js'
+import { logEvent } from '../../services/analytics/index.js'
 import { parseUserSpecifiedModel } from '../../utils/model/model.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { lazySchema } from '../../utils/lazySchema.js'

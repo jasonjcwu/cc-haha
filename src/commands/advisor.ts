@@ -4,6 +4,8 @@ import {
   canUseAdvisorWithBaseModel,
   canUserConfigureAdvisor,
   isAdvisorModelAllowed,
+  modelSupportsAdvisor,
+  usesClientSideAdvisorTool,
 } from '../utils/advisor.js'
 import {
   getDefaultMainLoopModelSetting,
@@ -80,7 +82,7 @@ const call: LocalCommandCall = async (args, context) => {
   })
   updateSettingsForSource('userSettings', { advisorModel: normalizedModel })
 
-  if (!modelSupportsAdvisor(baseModel)) {
+  if (!modelSupportsAdvisor(baseModel) && !usesClientSideAdvisorTool()) {
     return {
       type: 'text',
       value: `Advisor set to ${normalizedModel}.\nNote: Your current model (${baseModel}) does not support advisors. Switch to a supported model to use the advisor.`,
