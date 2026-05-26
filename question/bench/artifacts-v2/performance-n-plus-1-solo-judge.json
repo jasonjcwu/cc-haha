@@ -1,0 +1,13 @@
+{
+  "taskId": "performance-n-plus-1",
+  "config": "solo",
+  "scores": {
+    "root_cause": 9,
+    "fix_correct": 9,
+    "edge_cases": 8,
+    "specificity": 9
+  },
+  "weightedScore": 8.8,
+  "rawResponse": "```json\n{\n  \"root_cause\": 9,\n  \"fix_correct\": 9,\n  \"edge_cases\": 8,\n  \"specificity\": 9\n}\n```",
+  "parsedOk": true
+}

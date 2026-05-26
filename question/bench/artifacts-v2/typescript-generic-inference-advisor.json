@@ -1,0 +1,22 @@
+{
+  "taskId": "typescript-generic-inference",
+  "config": "advisor",
+  "output": "## Why TypeScript Loses the 'name' Property\n\nThe issue isn't with discriminated union narrowing - TypeScript correctly narrows `Result<T>` to `{ success: true; data: T }` when you check `if (result.success)`.\n\nThe problem occurs during **type inference at the call site**. Here's what happens:\n\n1. When calling `processItems`, TypeScript uses context-based typing for the generic parameter `T`\n2. Since `T extends { id: string }` is the only constraint, and the callback `(item) => ...` doesn't require `name`, TypeScript infers the minimum type that satisfies the constraint: `{ id: string }`\n3. It intentionally \"forgets\" about `name` because it's not required by the constraint\n4. This inference carries through `wrapResult` and back to the call site\n\n**Key insight**: TypeScript prioritizes constraint satisfaction over preserving extra properties during inference when the extra properties aren't needed.\n\n## The Fix\n\n### Approach 1: Explicit Type Parameter (Recommended)\n\n```typescript\nconst result = processItems<{ id: string; name: string }>(\n  [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }],\n  (item) => console.log(item.name)\n);\n\nif (result.success) {\n  result.data.forEach(item => console.log(item.name)); // Works perfectly\n}\n```\n\n### Approach 2: Reference the Unexported Type\n\n```typescript\nconst items = [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }];\nconst result = processItems<typeof items>(items, (item) => console.log(item.name));\n```\n\n## Which is Better?\n\n**Approach 1 (explicit type parameter) wins**. Explicitly defining `<{ id: string; name: string }>`:\n\n- Makes the code self-documenting about what types you're working with\n- Ensures strict type safety even if the array changes later\n- Prevents \"type widening\" if you modify the array\n- Is more readable and maintainable\n\nThe extra verbosity pays off in clarity and type safety.",
+  "numTurns": 2,
+  "advisorCalled": true,
+  "durationMs": 36421,
+  "costUsd": 0.10963,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 6561,
+      "outputTokens": 1302,
+      "cacheReadInputTokens": 88550,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.10963,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:55:38.100Z"
+}

@@ -1,0 +1,33 @@
+{
+  "taskId": "django-16819",
+  "config": "advisor",
+  "scores": [
+    {
+      "id": "root_cause",
+      "type": "binary",
+      "value": false
+    },
+    {
+      "id": "approach",
+      "type": "binary",
+      "value": false
+    },
+    {
+      "id": "edge_cases",
+      "type": "binary",
+      "value": false
+    },
+    {
+      "id": "specificity",
+      "type": "score",
+      "value": 0
+    },
+    {
+      "id": "completeness",
+      "type": "score",
+      "value": 0
+    }
+  ],
+  "weightedScore": 0,
+  "rawJson": ""
+}

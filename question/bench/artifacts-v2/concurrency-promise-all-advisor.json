@@ -1,0 +1,22 @@
+{
+  "taskId": "concurrency-promise-all",
+  "config": "advisor",
+  "output": "Based on the advisor's analysis, here are the root causes and fixes for both issues:\n\n## Root Causes\n\n### Issue 1: Randomly Dropped Results\nThe code doesn't check `resp.ok` before calling `resp.json()`. When a URL returns an error status (404, 500, etc.), the response body might be HTML instead of JSON, causing `resp.json()` to throw an exception. Without proper error handling, these failed promises either:\n- Get filtered out if using `.catch()` elsewhere\n- Return `undefined`\n- Simply disappear from the output array\n\n### Issue 2: 429 Causes Entire Batch to Fail\n`Promise.all` is \"fail-fast\" by design - if any single promise rejects, the entire batch rejects immediately. A single 429 rate limit response from one URL crashes the entire operation.\n\n### Additional Critical Issue\nFiring 50,000 concurrent requests will overwhelm the system, trigger rate limits, and likely crash Node.js due to resource exhaustion (sockets, memory, file descriptors).\n\n## The Fix: Batched Processing with Error Handling\n```typescript\nimport pLimit from 'p-limit';\n\ninterface FetchResult {\n  url: string;\n  data: any;\n  status: number;\n  error?: string;\n}\n\nasync function processAllUrls(urls: string[], concurrency: number = 50): Promise<FetchResult[]> {\n  const limit = pLimit(concurrency);\n\n  const results = await Promise.all(\n    urls.map((url) =>\n      limit(async () => {\n        try {\n          // 1. Fetch the URL\n          const resp = await fetch(url);\n\n          // 2. Handle non-OK statuses explicitly\n          if (!resp.ok) {\n            return { \n              url, \n              data: null, \n              status: resp.status, \n              error: `HTTP Error: ${resp.status}` \n            };\n          }\n\n          // 3. Safely parse JSON\n          const data = await resp.json();\n          return { url, data, status: resp.status };\n\n        } catch (err) {\n          // 4. Catch network errors or JSON parse failures\n          return { \n            url, \n            data: null, \n            status: 0, \n            error: (err as Error).message \n          };\n        }\n      })\n    )\n  );\n\n  return results;\n}\n```\n\n### Key Improvements:\n1. **`pLimit`**: Limits concurrency to prevent resource exhaustion\n2. **Error Handling**: Every URL produces a result, even if it fails\n3. **Explicit Status Checks**: Handles HTTP errors before attempting JSON parsing\n4. **Consistent Return Shape**: No more dropped results\n\nThis ensures all 50,000 URLs are processed, with failures captured rather than causing the entire batch to fail.",
+  "numTurns": 2,
+  "advisorCalled": true,
+  "durationMs": 38151,
+  "costUsd": 0.2897295,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 47452,
+      "outputTokens": 1164,
+      "cacheReadInputTokens": 46739,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.2897295,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:54:34.774Z"
+}

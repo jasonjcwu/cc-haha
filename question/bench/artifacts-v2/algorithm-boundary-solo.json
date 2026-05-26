@@ -1,0 +1,22 @@
+{
+  "taskId": "algorithm-boundary",
+  "config": "solo",
+  "output": "## Summary of Fixes\n\n### 1. **findMedianSortedArrays Overflow Issue**\nThe original implementation fails with large numbers due to:\n```typescript\nmerged[mid - 1] + merged[mid] // Can overflow\n```\n\n**Solution:** The binary search approach avoids creating the merged array and uses mathematical comparisons that don't require adding large numbers.\n\n### 2. **kthSmallest Off-by-One Error**\nThe issue occurs when:\n- Matrix contains duplicates\n- k equals the total number of elements\n\n**Original problem:**\n```typescript\nconst flat = matrix.flat(); // Returns array of length 9\nreturn flat[k - 1]; // k-1 = 8, but flat[8] is undefined\n```\n\n**Solution:** Added input validation to ensure k is within bounds.\n\n### 3. **Optimized findMedianSortedArrays**\nTime complexity improved from O((m+n)log(m+n)) to O(log(min(m,n))).\n\n**Binary search approach:**\n1. Binary search on the smaller array to find partition point\n2. Check if left partition elements ≤ right partition elements\n3. Calculate median based on partition elements\n4. Handle edge cases when partition is at array boundaries\n\nThe key insight is that we don't need to actually merge the arrays - we just need to find the correct partition that divides the combined array into left and right halves.",
+  "numTurns": 3,
+  "advisorCalled": true,
+  "durationMs": 31355,
+  "costUsd": 0.144289,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 3235,
+      "outputTokens": 2387,
+      "cacheReadInputTokens": 136878,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.144289,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:53:13.474Z"
+}

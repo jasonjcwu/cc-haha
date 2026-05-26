@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "dimensions": [
+    {
+      "id": "root_cause",
+      "question": "Did the solution correctly identify the root cause of the issue?",
+      "type": "binary",
+      "weight": 1.5
+    },
+    {
+      "id": "approach",
+      "question": "Is the proposed fix approach correct? Would it actually solve the problem without introducing new issues?",
+      "type": "binary",
+      "weight": 1.5
+    },
+    {
+      "id": "edge_cases",
+      "question": "Does the solution consider edge cases, error handling, and potential side effects?",
+      "type": "binary",
+      "weight": 1.0
+    },
+    {
+      "id": "specificity",
+      "question": "Rate how specific and actionable the solution is. 0=vague hand-waving, 10=precise with exact file paths, function names, and code changes.",
+      "type": "score",
+      "weight": 1.0
+    },
+    {
+      "id": "completeness",
+      "question": "Rate how complete the solution is. Does it address all aspects of the issue or only the surface symptom?",
+      "type": "score",
+      "weight": 1.0
+    }
+  ],
+  "judge_prompt": "You are an expert code reviewer evaluating solutions to real GitHub issues.\n\nYou must be strict and objective. Score based ONLY on what is present in the solution, not on what might have been intended.\n\nFor binary checks: answer true ONLY if there is clear evidence in the solution. If uncertain, answer false.\nFor scores: 0 means completely absent, 10 means exceptionally thorough.\n\nOutput a single JSON object with the check results."
+}

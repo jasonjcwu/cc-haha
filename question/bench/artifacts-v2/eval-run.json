@@ -1,0 +1,520 @@
+{
+  "tasks": [
+    {
+      "id": "concurrency-promise-all",
+      "category": "concurrency",
+      "difficulty": "medium",
+      "code": "async function processAllUrls(urls: string[]): Promise<FetchResult[]> {\n  const results = await Promise.all(\n    urls.map(async (url) => {\n      const resp = await fetch(url);\n      const data = await resp.json();\n      return { url, data, status: resp.status };\n    })\n  );\n  return results;\n}",
+      "question": "This function processes 50,000 URLs. In production it randomly drops results — some URLs that definitely returned 200 never appear in the output array. The process doesn't crash or throw. There's also a secondary issue: when one URL returns a 429 status, the entire batch fails. Fix both issues. Explain the root cause of each.",
+      "gold_answer": "Issue 1: Promise.all rejects on first rejection (429 → rejected promise → entire Promise.all rejects), losing all other results. Fix: use Promise.allSettled or wrap each in try/catch returning a fallback. Issue 2: Dropping results is likely because the runtime or HTTP agent has a connection pool limit. When 50k concurrent connections are opened, some get silently dropped or timed out. Fix: use batching with p-limit or process in chunks of ~100 concurrent requests. Both issues stem from Promise.all's all-or-nothing semantics and lack of concurrency control."
+    },
+    {
+      "id": "security-sql-injection",
+      "category": "security",
+      "difficulty": "hard",
+      "code": "class UserRepository {\n  private pool: Pool;\n\n  async findByRole(role: string): Promise<User[]> {\n    const query = `SELECT * FROM users WHERE role = '${role}'`;\n    const result = await this.pool.query(query);\n    return result.rows;\n  }\n\n  async searchUsers(filters: Record<string, string>): Promise<User[]> {\n    const conditions = Object.entries(filters)\n      .map(([key, value]) => `${key} = '${value}'`)\n      .join(' AND ');\n    const query = `SELECT * FROM users WHERE ${conditions}`;\n    const result = await this.pool.query(query);\n    return result.rows;\n  }\n\n  async getUserStats(userId: string): Promise<Stats> {\n    const query = `SELECT * FROM get_user_stats($1)`;\n    const result = await this.pool.query(query, [userId]);\n    return result.rows[0];\n  }\n}",
+      "question": "Review this code for security vulnerabilities. For each vulnerability found: (1) identify the exact function and line, (2) show a concrete exploit payload, (3) explain why the parameterized query in getUserStats is safe while the others aren't. Also explain why the searchUsers function is MORE dangerous than findByRole even though they look similar.",
+      "gold_answer": "findByRole: direct string interpolation → SQL injection via role=admin' OR '1'='1. searchUsers: BOTH key and value are interpolated, so attacker controls column names too → filters like {'role': 'admin', '1=1; DROP TABLE users;--': ''} or {'role': 'admin', '1': '1) UNION SELECT password FROM admins--'}. Column name injection is more dangerous because it bypasses WAFs that only check values and can escalate to schema manipulation. getUserStats uses $1 parameterized query — the database treats it as a literal value, not SQL syntax. The key difference: parameterized queries separate code from data at the protocol level, while interpolation merges them into one string."
+    },
+    {
+      "id": "typescript-generic-inference",
+      "category": "type_system",
+      "difficulty": "hard",
+      "code": "type Result<T> = { success: true; data: T } | { success: false; error: string };\n\nfunction wrapResult<T>(fn: () => T): Result<T> {\n  try {\n    const data = fn();\n    return { success: true, data };\n  } catch (e) {\n    return { success: false, error: String(e) };\n  }\n}\n\nasync function wrapAsyncResult<T>(fn: () => Promise<T>): Promise<Result<T>> {\n  try {\n    const data = await fn();\n    return { success: true, data };\n  } catch (e) {\n    return { success: false, error: String(e) };\n  }\n}\n\n// Usage:\nconst r1 = wrapResult(() => JSON.parse('invalid'));\nconst r2 = wrapAsyncResult(() => fetch('/api/data').then(r => r.json()));\n\n// Problematic usage:\nfunction processItems<T extends { id: string }>(items: T[], handler: (item: T) => void): Result<T[]> {\n  return wrapResult(() => {\n    for (const item of items) { handler(item); }\n    return items;\n  });\n}\n\nconst result = processItems(\n  [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }],\n  (item) => console.log(item.name)\n);\n\n// This should work but doesn't type-check:\nif (result.success) {\n  result.data.forEach(item => console.log(item.name)); // Property 'name' does not exist on type '{ id: string }'\n}",
+      "question": "Explain why TypeScript loses the 'name' property in the discriminated union narrowing. The generic T extends { id: string } should preserve the full type, but it doesn't. Trace the type inference through each function call. Provide the exact fix — there are two possible approaches. Explain which is better and why.",
+      "gold_answer": "The issue is in processItems signature: T extends { id: string } constrains T to at least { id: string }, but when TypeScript infers T from the items array [{ id, name }], it correctly infers T = { id: string; name: string }. The actual problem is that wrapResult's return type Result<T> creates a union { success: true; data: T } | { success: false; error: string }. When processItems returns Result<T[]>, the data field type is T[] where T = { id: string; name: string }. After narrowing with result.success === true, data should be { id: string; name: string }[]. The bug might be that TypeScript widens T to its constraint { id: string } in certain inference contexts. Fix 1: add a second generic parameter to capture the literal type: function processItems<T extends { id: string }>(...). This should already work, so the issue may be a TypeScript version-specific inference bug. Fix 2: use a const assertion on the array argument or explicitly type the generic: processItems<{ id: string; name: string }>(...). Fix 1 is better because it doesn't require caller changes."
+    },
+    {
+      "id": "performance-n-plus-1",
+      "category": "performance",
+      "difficulty": "medium",
+      "code": "class OrderService {\n  private db: Database;\n\n  async getOrdersWithDetails(userIds: string[]): Promise<OrderDetail[]> {\n    const orders = await this.db.query(\n      'SELECT * FROM orders WHERE user_id = ANY($1)',\n      [userIds]\n    );\n\n    const results: OrderDetail[] = [];\n    for (const order of orders.rows) {\n      const items = await this.db.query(\n        'SELECT * FROM order_items WHERE order_id = $1',\n        [order.id]\n      );\n      const payments = await this.db.query(\n        'SELECT * FROM payments WHERE order_id = $1',\n        [order.id]\n      );\n      results.push({\n        order,\n        items: items.rows,\n        payments: payments.rows,\n      });\n    }\n    return results;\n  }\n\n  async getOrderSummary(orderId: string): Promise<OrderSummary> {\n    const order = await this.db.query('SELECT * FROM orders WHERE id = $1', [orderId]);\n    const count = await this.db.query(\n      'SELECT COUNT(*) FROM order_items WHERE order_id = $1',\n      [orderId]\n    );\n    return { ...order.rows[0], itemCount: count.rows[0].count };\n  }\n}",
+      "question": "This service handles 500 orders per batch. With 500 orders, getOrdersWithDetails takes 30+ seconds. Diagnose the performance issue, explain the exact query pattern that causes it (how many queries run total?), and provide the optimized solution. Also explain why getOrderSummary has a different (but related) performance problem and how to fix it.",
+      "gold_answer": "getOrdersWithDetails: N+1 query pattern. 1 query for orders + 500 × 2 queries (items + payments per order) = 1001 total queries. Each query has network round-trip overhead (~1-5ms minimum), so 1001 × 3ms = ~3 seconds minimum, plus query execution time = 30s. Fix: batch queries — collect all order IDs, then SELECT * FROM order_items WHERE order_id = ANY($orderIds) and similarly for payments, then group in application code. This reduces to 3 total queries. getOrderSummary: does 2 queries when it could be 1 — use a JOIN or subquery: SELECT o.*, (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count FROM orders o WHERE o.id = $1. This saves one round trip per call."
+    },
+    {
+      "id": "algorithm-boundary",
+      "category": "algorithm",
+      "difficulty": "hard",
+      "code": "function findMedianSortedArrays(nums1: number[], nums2: number[]): number {\n  const merged = [...nums1, ...nums2].sort((a, b) => a - b);\n  const mid = Math.floor(merged.length / 2);\n  if (merged.length % 2 === 0) {\n    return (merged[mid - 1] + merged[mid]) / 2;\n  } else {\n    return merged[mid];\n  }\n}\n\nfunction kthSmallest(matrix: number[][], k: number): number {\n  const flat = matrix.flat().sort((a, b) => a - b);\n  return flat[k - 1];\n}",
+      "question": "Both functions work for small inputs but have three issues: (1) findMedianSortedArrays fails for arrays with values near Number.MAX_SAFE_INTEGER — specifically when merged[mid-1] + merged[mid] overflows. Show a concrete input that produces a wrong answer. (2) kthSmallest has an off-by-one error when k equals the matrix size AND the matrix contains duplicates. Show the exact failure case. (3) Both have O(n log n) time complexity — provide the O(log(min(m,n))) solution for findMedianSortedArrays and explain the binary search approach.",
+      "gold_answer": "Issue 1: Number overflow. When merged[mid-1] = 9007199254740991 and merged[mid] = 9007199254740992, their sum is 18014398509481983, which exceeds MAX_SAFE_INTEGER (9007199254740991). JavaScript rounds it to 18014398509481984, producing wrong median. Fix: return merged[mid-1] + (merged[mid] - merged[mid-1]) / 2 using incremental difference. Issue 2: When matrix = [[1,1],[1,1]] and k=4, flat[3] = 1 which is correct. But when matrix = [[1,2],[3,3]] and k=3, flat[2] = 3, which is correct. The real off-by-one is kthSmallest returns flat[k-1] which is 0-indexed, so k=1 returns the smallest — that's correct. The edge case is k > flat.length (e.g., k=5 for a 2x2 matrix), returning undefined. Issue 3: Binary search on the shorter array partition. Search for partition point i in nums1 where elements on left of i + elements on left of j (in nums2) equal half the total. Check maxLeft <= minRight on both sides. Adjust binary search bounds based on comparison."
+    },
+    {
+      "id": "api-design-compatibility",
+      "category": "api_design",
+      "difficulty": "medium",
+      "code": "interface ConfigV1 {\n  host: string;\n  port: number;\n  useSSL: boolean;\n}\n\nclass ApiClient {\n  private config: ConfigV1;\n\n  constructor(config: ConfigV1) {\n    this.config = config;\n  }\n\n  async request(path: string, options?: { method?: string; body?: any }): Promise<any> {\n    const protocol = this.config.useSSL ? 'https' : 'http';\n    const url = `${protocol}://${this.config.host}:${this.config.port}${path}`;\n    return fetch(url, {\n      method: options?.method ?? 'GET',\n      body: options?.body ? JSON.stringify(options.body) : undefined,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n\n  async get(path: string): Promise<any> {\n    return this.request(path);\n  }\n\n  async post(path: string, body: any): Promise<any> {\n    return this.request(path, { method: 'POST', body });\n  }\n}\n\n// Existing usage across codebase (50+ call sites):\nconst client = new ApiClient({ host: 'api.example.com', port: 443, useSSL: true });\nconst data = await client.get('/users');\nconst result = await client.post('/users', { name: 'Alice' });",
+      "question": "We need to add these features to ApiClient without breaking existing code: (1) request timeout support (default 30s), (2) retry with exponential backoff (max 3 attempts), (3) custom headers per-request, (4) response type safety (generics). The new ConfigV2 should also support a URL string shorthand: new ApiClient('https://api.example.com'). Show the complete refactored code. Explain how each change maintains backward compatibility with the 50+ existing call sites.",
+      "gold_answer": "Key design: make ConfigV1 fields optional with defaults, add new fields as optional. Constructor accepts string | ConfigV2. Use AbortController for timeout. Wrap fetch in retry loop with exponential backoff (1s, 2s, 4s). Extend request options for headers. Add generic type parameter for response. Backward compatibility: (1) ConfigV1 is a subset of ConfigV2 — existing objects still valid. (2) get/post signatures unchanged — optional generic doesn't break inference. (3) Default timeout 30s doesn't change behavior for calls that currently succeed within 30s. (4) Default retry count 0 means existing behavior (no retries) unless explicitly configured. (5) String overload is additive — existing ConfigV1 usage still works. The generic on get<T> returns Promise<T> with T defaulting to any, matching current return type."
+    }
+  ],
+  "rubric": {
+    "version": 2,
+    "dimensions": [
+      {
+        "id": "root_cause",
+        "question": "Did the answer correctly identify the root cause of the issue?",
+        "type": "score",
+        "weight": 3,
+        "scoring": "0=wrong, 3=partially correct, 5=correct but vague, 7=correct and specific, 10=correct with deep insight beyond the obvious"
+      },
+      {
+        "id": "fix_correct",
+        "question": "Is the proposed fix correct and complete?",
+        "type": "score",
+        "weight": 3,
+        "scoring": "0=no fix, 3=wrong approach, 5=partially correct, 7=correct fix, 10=correct fix with proper error handling and edge cases"
+      },
+      {
+        "id": "edge_cases",
+        "question": "Did the answer identify and address relevant edge cases?",
+        "type": "score",
+        "weight": 2,
+        "scoring": "0=none, 3=mentioned but not addressed, 5=some edge cases, 7=most edge cases, 10=all edge cases with concrete examples"
+      },
+      {
+        "id": "specificity",
+        "question": "Is the answer specific with code references (function names, line logic, exact changes)?",
+        "type": "score",
+        "weight": 2,
+        "scoring": "0=generic, 3=some specifics, 5=references specific functions, 7=shows exact code changes, 10=production-ready diff"
+      }
+    ],
+    "judge_instructions": "You are an expert code reviewer evaluating a developer's answer to a coding question. Score each dimension independently. Be strict — a score of 10 means the answer is production-ready with no improvements needed. A score of 5 is average. Do not give participation points — if something is wrong, score it low. Reference the gold answer for what a complete solution looks like, but do not require the exact same approach."
+  },
+  "solo": [
+    {
+      "taskId": "concurrency-promise-all",
+      "config": "solo",
+      "output": "## Root Causes and Fixes\n\n### Issue 1: Randomly Dropped Results\n\n**Root Cause**: `Promise.all()` fails fast - when one request fails, it rejects the entire promise, causing other pending requests to be abandoned even if they would have succeeded. This is especially common with high concurrency (50k URLs).\n\n**Fix**: Use `Promise.allSettled()` instead. This waits for all promises to complete regardless of individual failures, ensuring you get results from successful requests while capturing errors from failed ones.\n\n### Issue 2: 429 Fails Entire Batch\n\n**Root Cause**: The original code treats any non-200 response as an error. A 429 (Too Many Requests) status code isn't a server error - it's a rate limit that should trigger retries with exponential backoff.\n\n**Fix**: \n- Add retry logic specifically for 429 status codes\n- Implement `retry-after` header support\n- Use exponential backoff (1s, 2s, 4s, etc.) between retries\n- After max retries, return the 429 status instead of failing\n\n### Key Improvements Made:\n\n1. **Concurrency Control**: Process in batches of 50 instead of hitting 50k URLs simultaneously\n2. **Proper Error Handling**: No more silent drops - all failures are captured and returned\n3. **Rate Limit Handling**: Smart retries with `retry-after` header respect\n4. **Timeout Management**: Each request gets proper error handling without blocking others\n5. **Memory Efficiency**: Processing in batches prevents memory overflow with large datasets\n\nThe fix ensures you get a complete picture of which URLs succeeded and which failed, with proper error messages for the failures.",
+      "numTurns": 4,
+      "advisorCalled": true,
+      "durationMs": 48548,
+      "costUsd": 0.4007455,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 50480,
+          "outputTokens": 3062,
+          "cacheReadInputTokens": 143591,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.4007455,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:51:37.911Z"
+    },
+    {
+      "taskId": "security-sql-injection",
+      "config": "solo",
+      "output": "## Security Vulnerabilities Found\n\n### 1. SQL Injection in `findByRole` function\n**Location**: Line 9, `findByRole` function\n```typescript\nconst query = `SELECT * FROM users WHERE role = '${role}'`;\n```\n\n**Exploit payload**: \n```sql\nadmin' OR '1'='1\n```\n\n**Full exploit**: If a caller passes `admin' OR '1'='1` as the role parameter, the resulting query becomes:\n```sql\nSELECT * FROM users WHERE role = 'admin' OR '1'='1'\n```\nThis returns ALL users in the database.\n\n### 2. SQL Injection in `searchUsers` function  \n**Location**: Lines 16-20, `searchUsers` function\n```typescript\nconst conditions = Object.entries(filters)\n  .map(([key, value]) => `${key} = '${value}'`)\n  .join(' AND ');\nconst query = `SELECT * FROM users WHERE ${conditions}`;\n```\n\n**Exploit payload**:\n```json\n{\n  \"role\": \"admin' --\",\n  \"status\": \"active\"\n}\n```\n\n**Full exploit**: This would generate:\n```sql\nSELECT * FROM users WHERE role = 'admin' -- ' AND status = 'active'\n```\nThe `--` comments out the rest of the query, returning all admin users regardless of status.\n\n## Why `getUserStats` is Safe\n\nThe `getUserStats` function uses **parameterized queries**:\n```typescript\nconst query = `SELECT * FROM get_user_stats($1)`;\nconst result = await this.pool.query(query, [userId]);\n```\n\n**Key differences**:\n1. **No string interpolation**: The query template doesn't include variables directly\n2. **Parameters are escaped**: The database driver properly escapes `userId` before execution\n3. **Clear separation**: SQL structure and data are handled separately\n\n## Why `searchUsers` is MORE Dangerous Than `findByRole`\n\nAlthough both functions are vulnerable, `searchUsers` is significantly more dangerous for several reasons:\n\n### 1. **Multiple Entry Points**\n`findByRole` has only one parameter to sanitize. `searchUsers` accepts arbitrary filters from a dictionary, potentially allowing dozens of injection points simultaneously.\n\n### 2. **Dynamic Column Selection**\nThe vulnerability allows attackers to not only inject SQL but also modify which columns are queried. Example:\n```json\n{\n  \"role\": \"admin'; DROP TABLE users; --\",\n  \"id\": \"1\"\n}\n```\n\n### 3. **Union-Based Attacks**\nAttackers can add columns to retrieve sensitive data:\n```json\n{\n  \"role\": \"admin' UNION SELECT credit_card, password FROM sensitive_data --\",\n  \"status\": \"active\"\n}\n```\n\n### 4. **Blind SQL Injection Potential**\nWith `searchUsers`, attackers can use time-based techniques:\n```json\n{\n  \"role\": \"admin' AND (SELECT COUNT(*) FROM pg_sleep(5)) > 0 --\"\n}\n```\n\n### 5. **Metadata Discovery**\nThe dynamic nature allows attackers to discover database structure:\n```json\n{\n  \"role\": \"admin' AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') --\"\n}\n```\n\n## Fix Recommendation\n\nBoth vulnerable functions should be rewritten to use parameterized queries:\n```typescript\n// Safe version of findByRole\nasync findByRole(role: string): Promise<User[]> {\n  const query = 'SELECT * FROM users WHERE role = $1';\n  const result = await this.pool.query(query, [role]);\n  return result.rows;\n}\n\n// Safe version of searchUsers  \nasync searchUsers(filters: Record<string, string>): Promise<User[]> {\n  const conditions = Object.keys(filters).map((key, index) => \n    `${key} = $${index + 1}`\n  );\n  const query = `SELECT * FROM users WHERE ${conditions.join(' AND ')}`;\n  const values = Object.values(filters);\n  const result = await this.pool.query(query, values);\n  return result.rows;\n}\n```\n\nThe critical lesson here is that **any time you interpolate variables directly into SQL strings, you create SQL injection vulnerabilities**. Parameterized queries are the only reliable defense.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 20430,
+      "costUsd": 0.1067895,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 5562,
+          "outputTokens": 1436,
+          "cacheReadInputTokens": 86159,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.1067895,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:51:58.342Z"
+    },
+    {
+      "taskId": "typescript-generic-inference",
+      "config": "solo",
+      "output": "The core insight: TypeScript's generic type parameters are scoped to their function. When you call `wrapResult()`, it creates a new type context that doesn't automatically connect back to the original `T` from `processItems`. That's why Fix 2 - using the same `T` parameter in both places - works better.",
+      "numTurns": 5,
+      "advisorCalled": true,
+      "durationMs": 25113,
+      "costUsd": 0.1841565,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 5989,
+          "outputTokens": 1604,
+          "cacheReadInputTokens": 228223,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.1841565,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:52:23.456Z"
+    },
+    {
+      "taskId": "performance-n-plus-1",
+      "config": "solo",
+      "output": "## Performance Issue Diagnosis\n\n### The N+1 Query Problem\n\nWhen `getOrdersWithDetails` is called with 500 orders, here's exactly what happens:\n\n**1 Initial query**: Fetch all 500 orders\n**Then for each order**: \n- 1 query for order_items\n- 1 query for payments\n\n**Total queries**: 1 + (500 × 2) = **1,001 database queries**\n\nThis explains the 30+ second execution time. Each query round-trip to the database creates significant overhead, especially with 1,001 total queries.\n\n### The Solution: Batch Loading\n\n```typescript\nasync getOrdersWithDetails(userIds: string[]): Promise<OrderDetail[]> {\n  // Get all orders in one query\n  const orders = await this.db.query(\n    'SELECT * FROM orders WHERE user_id = ANY($1)',\n    [userIds]\n  );\n\n  const orderIds = orders.rows.map(o => o.id);\n  \n  // Batch fetch all order_items in one query\n  const itemsResult = await this.db.query(\n    'SELECT * FROM order_items WHERE order_id = ANY($1)',\n    [orderIds]\n  );\n  \n  // Batch fetch all payments in one query\n  const paymentsResult = await this.db.query(\n    'SELECT * FROM payments WHERE order_id = ANY($1)',\n    [orderIds]\n  );\n\n  // Group items and payments by order_id\n  const itemsByOrderId = itemsResult.rows.reduce((acc, item) => {\n    if (!acc[item.order_id]) acc[item.order_id] = [];\n    acc[item.order_id].push(item);\n    return acc;\n  }, {});\n\n  const paymentsByOrderId = paymentsResult.rows.reduce((acc, payment) => {\n    if (!acc[payment.order_id]) acc[payment.order_id] = [];\n    acc[payment.order_id].push(payment);\n    return acc;\n  }, {});\n\n  // Build results\n  return orders.rows.map(order => ({\n    order,\n    items: itemsByOrderId[order.id] || [],\n    payments: paymentsByOrderId[order.id] || [],\n  }));\n}\n```\n\n**Result**: Now only 3 queries total instead of 1,001 - a 99.7% reduction!\n\n---\n\n## `getOrderSummary` Performance Issue\n\n### The Problem\nThis method has a less severe but related issue:\n- 1 query for order details (fetches all columns)\n- 1 query for item count\n\nWhile this isn't N+1, it still makes two round-trips when one would suffice.\n\n### The Solution\n```typescript\nasync getOrderSummary(orderId: string): Promise<OrderSummary> {\n  // Get order and item count in a single query\n  const result = await this.db.query(\n    `SELECT o.*, COUNT(i.order_id) as itemCount \n     FROM orders o \n     LEFT JOIN order_items i ON o.id = i.order_id \n     WHERE o.id = $1 \n     GROUP BY o.id`,\n    [orderId]\n  );\n  \n  return {\n    ...result.rows[0],\n    itemCount: parseInt(result.rows[0].itemCount)\n  };\n}\n```\n\n**Key improvement**: Eliminates the second query entirely by using a LEFT JOIN and COUNT in a single query.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 18661,
+      "costUsd": 0.10006799999999999,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 5632,
+          "outputTokens": 1151,
+          "cacheReadInputTokens": 86266,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.10006799999999999,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:52:42.118Z"
+    },
+    {
+      "taskId": "algorithm-boundary",
+      "config": "solo",
+      "output": "## Summary of Fixes\n\n### 1. **findMedianSortedArrays Overflow Issue**\nThe original implementation fails with large numbers due to:\n```typescript\nmerged[mid - 1] + merged[mid] // Can overflow\n```\n\n**Solution:** The binary search approach avoids creating the merged array and uses mathematical comparisons that don't require adding large numbers.\n\n### 2. **kthSmallest Off-by-One Error**\nThe issue occurs when:\n- Matrix contains duplicates\n- k equals the total number of elements\n\n**Original problem:**\n```typescript\nconst flat = matrix.flat(); // Returns array of length 9\nreturn flat[k - 1]; // k-1 = 8, but flat[8] is undefined\n```\n\n**Solution:** Added input validation to ensure k is within bounds.\n\n### 3. **Optimized findMedianSortedArrays**\nTime complexity improved from O((m+n)log(m+n)) to O(log(min(m,n))).\n\n**Binary search approach:**\n1. Binary search on the smaller array to find partition point\n2. Check if left partition elements ≤ right partition elements\n3. Calculate median based on partition elements\n4. Handle edge cases when partition is at array boundaries\n\nThe key insight is that we don't need to actually merge the arrays - we just need to find the correct partition that divides the combined array into left and right halves.",
+      "numTurns": 3,
+      "advisorCalled": true,
+      "durationMs": 31355,
+      "costUsd": 0.144289,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 3235,
+          "outputTokens": 2387,
+          "cacheReadInputTokens": 136878,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.144289,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:53:13.474Z"
+    },
+    {
+      "taskId": "api-design-compatibility",
+      "config": "solo",
+      "output": "Here's the complete refactored code with explanations for backward compatibility:\n\n## Key Changes and Backward Compatibility\n\n### 1. **Config Type Evolution**\n- **Added** `ConfigV2` with new optional fields\n- **Maintained** `ConfigV1` for existing code\n- **Created** union type `ApiClientConfig` to accept either old format or new string shorthand\n\n### 2. **String Constructor Shorthand**\n```typescript\n// New way - works immediately\nconst client = new ApiClient('https://api.example.com');\n\n// Automatically parsed into ConfigV2 equivalent:\n// {\n//   host: 'api.example.com',\n//   port: 443,\n//   useSSL: true,\n//   timeout: 30000, (default)\n//   maxRetries: 3, (default)\n//   defaultHeaders: {} (default)\n// }\n```\n\n### 3. **Backward Compatibility Preserved**\n\n**Existing code works unchanged:**\n```typescript\n// This exact pattern continues to work\nconst client = new ApiClient({ host: 'api.example.com', port: 443, useSSL: true });\nconst data = await client.get('/users');\nconst result = await client.post('/users', { name: 'Alice' });\n```\n\n### 4. **Default Values for New Features**\n- **Timeout**: 30s default (can be configured per instance or per request)\n- **Retries**: 3 attempts max (configurable)\n- **Existing code never times out** unless explicitly configured\n\n### 5. **Generic Type Safety (Optional)**\n```typescript\n// Can add type annotations without breaking existing code\ninterface User {\n  id: string;\n  name: string;\n}\n\nconst users = await client.get<User[]>('/users'); // Returns typed array\nconst data = await client.get('/users'); // Still returns any (unchanged)\n```\n\n### 6. **Per-Request Configuration**\n```typescript\n// New feature: Can override defaults per request\nawait client.request('/special-endpoint', {\n  timeout: 5000,     // Overrides instance default\n  maxRetries: 1,     // Overrides instance default\n  headers: { 'X-Custom': 'value' } // Merges with defaults\n});\n```\n\n### 7. **No Breaking Changes to Method Signatures**\n- `get()` and `post()` signatures unchanged\n- Added `put()` and `delete()` as new methods\n- Return type still defaults to `any` unless explicitly typed\n\n### 8. **Error Handling**\n- Network errors automatically retried\n- 5xx and 429 errors retried\n- Timeout errors thrown as `TimeoutError`\n- Existing error handling patterns continue to work\n\nThe refactored code adds all requested features while maintaining 100% backward compatibility with existing 50+ call sites. Existing code continues to work exactly as before, while new usage patterns are available for enhanced functionality.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 43146,
+      "costUsd": 0.16777599999999998,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 8007,
+          "outputTokens": 3383,
+          "cacheReadInputTokens": 86332,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.16777599999999998,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:53:56.621Z"
+    }
+  ],
+  "advisor": [
+    {
+      "taskId": "concurrency-promise-all",
+      "config": "advisor",
+      "output": "Based on the advisor's analysis, here are the root causes and fixes for both issues:\n\n## Root Causes\n\n### Issue 1: Randomly Dropped Results\nThe code doesn't check `resp.ok` before calling `resp.json()`. When a URL returns an error status (404, 500, etc.), the response body might be HTML instead of JSON, causing `resp.json()` to throw an exception. Without proper error handling, these failed promises either:\n- Get filtered out if using `.catch()` elsewhere\n- Return `undefined`\n- Simply disappear from the output array\n\n### Issue 2: 429 Causes Entire Batch to Fail\n`Promise.all` is \"fail-fast\" by design - if any single promise rejects, the entire batch rejects immediately. A single 429 rate limit response from one URL crashes the entire operation.\n\n### Additional Critical Issue\nFiring 50,000 concurrent requests will overwhelm the system, trigger rate limits, and likely crash Node.js due to resource exhaustion (sockets, memory, file descriptors).\n\n## The Fix: Batched Processing with Error Handling\n```typescript\nimport pLimit from 'p-limit';\n\ninterface FetchResult {\n  url: string;\n  data: any;\n  status: number;\n  error?: string;\n}\n\nasync function processAllUrls(urls: string[], concurrency: number = 50): Promise<FetchResult[]> {\n  const limit = pLimit(concurrency);\n\n  const results = await Promise.all(\n    urls.map((url) =>\n      limit(async () => {\n        try {\n          // 1. Fetch the URL\n          const resp = await fetch(url);\n\n          // 2. Handle non-OK statuses explicitly\n          if (!resp.ok) {\n            return { \n              url, \n              data: null, \n              status: resp.status, \n              error: `HTTP Error: ${resp.status}` \n            };\n          }\n\n          // 3. Safely parse JSON\n          const data = await resp.json();\n          return { url, data, status: resp.status };\n\n        } catch (err) {\n          // 4. Catch network errors or JSON parse failures\n          return { \n            url, \n            data: null, \n            status: 0, \n            error: (err as Error).message \n          };\n        }\n      })\n    )\n  );\n\n  return results;\n}\n```\n\n### Key Improvements:\n1. **`pLimit`**: Limits concurrency to prevent resource exhaustion\n2. **Error Handling**: Every URL produces a result, even if it fails\n3. **Explicit Status Checks**: Handles HTTP errors before attempting JSON parsing\n4. **Consistent Return Shape**: No more dropped results\n\nThis ensures all 50,000 URLs are processed, with failures captured rather than causing the entire batch to fail.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 38151,
+      "costUsd": 0.2897295,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 47452,
+          "outputTokens": 1164,
+          "cacheReadInputTokens": 46739,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.2897295,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:54:34.774Z"
+    },
+    {
+      "taskId": "security-sql-injection",
+      "config": "advisor",
+      "output": "I need to analyze the security vulnerabilities in the UserRepository class. Let me provide a comprehensive review:\n\n## Security Vulnerabilities Analysis\n\n### 1. **SQL Injection in `findByRole` function**\n\n**Location**: `findByRole` function, line 6\n```typescript\nconst query = `SELECT * FROM users WHERE role = '${role}'`;\n```\n\n**Concrete exploit payload**: \n```sql\n' OR '1'='1\n```\n\n**Full exploit example**: If a user passes `admin' OR '1'='1` as the role parameter, the resulting query becomes:\n```sql\nSELECT * FROM users WHERE role = 'admin' OR '1'='1'\n```\n\nThis will return all users in the database, not just administrators.\n\n### 2. **SQL Injection in `searchUsers` function**\n\n**Location**: `searchUsers` function, line 12\n```typescript\nconst conditions = Object.entries(filters)\n  .map(([key, value]) => `${key} = '${value}'`)\n  .join(' AND ');\nconst query = `SELECT * FROM users WHERE ${conditions}`;\n```\n\n**Concrete exploit payload**: \n```sql\n{\"username\":\"john' OR '1'='1' -- \",\"role\":\"admin\"}\n```\n\n**Full exploit example**: This results in the query:\n```sql\nSELECT * FROM users WHERE username = 'john' OR '1'='1' -- ' AND role = 'admin'\n```\n\nThe `--` comments out the rest of the query, making it return all users.\n\n### Why getUserStats is Safe\n\n**Location**: `getUserStats` function, line 18\n```typescript\nconst query = `SELECT * FROM get_user_stats($1)`;\nconst result = await this.pool.query(query, [userId]);\n```\n\nThis is safe because:\n1. **Parameterized queries**: The query uses placeholders (`$1`) instead of direct string interpolation\n2. **Value separation**: The driver separates the SQL query structure from the actual values\n3. **Safe procedure call**: Even if `userId` contains malicious SQL, it cannot alter the procedure call structure\n\n### Why searchUsers is MORE Dangerous than findByRole\n\nWhile both functions are vulnerable, `searchUsers` is significantly more dangerous because:\n\n1. **Dynamic columns**: `findByRole` only searches by a fixed `role` column, while `searchUsers` allows searching by ANY column in the table\n2. **Multiple injection points**: `searchUsers` can inject multiple times (once for each filter)\n3. **Wider attack surface**: An attacker can inject into columns with different data types, potentially accessing or modifying data in unexpected ways\n\n**Example**: An attacker could exploit this to dump the entire database:\n```sql\n{\"true\":\"1\",\"users_id\":\"1'; SELECT pg_sleep(5); -- \",\"username\":\"' OR 1=1 -- \"}\n```\n\n### Additional Security Concerns\n\n1. **Schema discovery**: Attackers can inject to discover table structure:\n   ```sql\n   {\"column_name\":\"'; SELECT table_name FROM information_schema.tables WHERE table_schema='public' -- \"}\n   ```\n\n2. **Union-based attacks**: Could extract data from other tables:\n   ```sql\n   {\"username\":\"' UNION SELECT username,password FROM credentials -- \",\"role\":\"admin\"}\n   ```\n\n### Security Recommendations\n\n1. **Convert to parameterized queries**:\n```typescript\n// Safe implementation\nasync findByRole(role: string): Promise<User[]> {\n  const query = 'SELECT * FROM users WHERE role = $1';\n  const result = await this.pool.query(query, [role]);\n  return result.rows;\n}\n\nasync searchUsers(filters: Record<string, string>): Promise<User[]> {\n  const safeColumns = ['username', 'email', 'role']; // Whitelist allowed columns\n  const validEntries = Object.entries(filters).filter(\n    ([key]) => safeColumns.includes(key)\n  );\n  \n  const values = validEntries.map(([_, value]) => value);\n  const columns = validEntries.map(([key]) => key);\n  \n  if (columns.length === 0) return [];\n  \n  const query = `SELECT * FROM users WHERE ${columns.map((_, i) => `${columns[i]} = $${i + 1}`).join(' AND ')}`;\n  const result = await this.pool.query(query, values);\n  return result.rows;\n}\n```\n\nThe most critical vulnerability is in `searchUsers` - it allows attackers to execute arbitrary queries on any column, making it a severe security risk.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 26904,
+      "costUsd": 0.109095,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 5590,
+          "outputTokens": 1490,
+          "cacheReadInputTokens": 87790,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.109095,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:55:01.678Z"
+    },
+    {
+      "taskId": "typescript-generic-inference",
+      "config": "advisor",
+      "output": "## Why TypeScript Loses the 'name' Property\n\nThe issue isn't with discriminated union narrowing - TypeScript correctly narrows `Result<T>` to `{ success: true; data: T }` when you check `if (result.success)`.\n\nThe problem occurs during **type inference at the call site**. Here's what happens:\n\n1. When calling `processItems`, TypeScript uses context-based typing for the generic parameter `T`\n2. Since `T extends { id: string }` is the only constraint, and the callback `(item) => ...` doesn't require `name`, TypeScript infers the minimum type that satisfies the constraint: `{ id: string }`\n3. It intentionally \"forgets\" about `name` because it's not required by the constraint\n4. This inference carries through `wrapResult` and back to the call site\n\n**Key insight**: TypeScript prioritizes constraint satisfaction over preserving extra properties during inference when the extra properties aren't needed.\n\n## The Fix\n\n### Approach 1: Explicit Type Parameter (Recommended)\n\n```typescript\nconst result = processItems<{ id: string; name: string }>(\n  [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }],\n  (item) => console.log(item.name)\n);\n\nif (result.success) {\n  result.data.forEach(item => console.log(item.name)); // Works perfectly\n}\n```\n\n### Approach 2: Reference the Unexported Type\n\n```typescript\nconst items = [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }];\nconst result = processItems<typeof items>(items, (item) => console.log(item.name));\n```\n\n## Which is Better?\n\n**Approach 1 (explicit type parameter) wins**. Explicitly defining `<{ id: string; name: string }>`:\n\n- Makes the code self-documenting about what types you're working with\n- Ensures strict type safety even if the array changes later\n- Prevents \"type widening\" if you modify the array\n- Is more readable and maintainable\n\nThe extra verbosity pays off in clarity and type safety.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 36421,
+      "costUsd": 0.10963,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 6561,
+          "outputTokens": 1302,
+          "cacheReadInputTokens": 88550,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.10963,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:55:38.100Z"
+    },
+    {
+      "taskId": "performance-n-plus-1",
+      "config": "advisor",
+      "output": "## 性能问题诊断与优化方案\n\n### getOrdersWithDetails 方法分析\n\n**性能瓶颈：典型的 N+1 查询问题**\n\n- 初始查询：1 次（获取 500 个订单）\n- 循环中为每个订单查询 items：500 次\n- 循环中为每个订单查询 payments：500 次\n- **总计查询次数：1,001 次**\n\n这些查询都是**串行执行**的，每个查询都有网络往返时间，导致总耗时超过 30 秒。\n\n### 优化方案\n\n```typescript\nasync getOrdersWithDetails(userIds: string[]): Promise<OrderDetail[]> {\n  // 1. 获取所有符合条件的订单\n  const orders = await this.db.query(\n    'SELECT * FROM orders WHERE user_id = ANY($1)',\n    [userIds]\n  );\n\n  // 2. 批量获取所有相关订单项\n  const orderIds = orders.rows.map(order => order.id);\n  const items = await this.db.query(\n    'SELECT * FROM order_items WHERE order_id = ANY($1)',\n    [orderIds]\n  );\n  const payments = await this.db.query(\n    'SELECT * FROM payments WHERE order_id = ANY($1)',\n    [orderIds]\n  );\n\n  // 3. 在内存中建立映射关系\n  const itemMap = new Map<string, typeof items.rows>();\n  const paymentMap = new Map<string, typeof payments.rows>();\n  \n  items.rows.forEach(item => {\n    if (!itemMap.has(item.order_id)) {\n      itemMap.set(item.order_id, []);\n    }\n    itemMap.get(item.order_id)!.push(item);\n  });\n  \n  payments.rows.forEach(payment => {\n    if (!paymentMap.has(payment.order_id)) {\n      paymentMap.set(payment.order_id, []);\n    }\n    paymentMap.get(payment.order_id)!.push(payment);\n  });\n\n  // 4. 组装结果\n  return orders.rows.map(order => ({\n    order,\n    items: itemMap.get(order.id) || [],\n    payments: paymentMap.get(order.id) || [],\n  }));\n}\n```\n\n**优化效果**：\n- 查询次数从 1,001 次减少到 3 次\n- 预计执行时间从 30+ 秒降至 1 秒以内\n\n### getOrderSummary 方法分析\n\n**性能问题：不必要的网络往返和数据传输**\n\n该方法执行了 2 个独立的查询：\n1. 获取订单详情\n2. 单独计算订单项数量\n\n即使这些查询很快，网络往返的开销在大量调用时会累积成性能问题。\n\n### 优化方案\n\n```typescript\nasync getOrderSummary(orderId: string): Promise<OrderSummary> {\n  const result = await this.db.query(`\n    SELECT \n      o.*,\n      COUNT(oi.id) as itemCount\n    FROM orders o\n    LEFT JOIN order_items oi ON o.id = oi.order_id\n    WHERE o.id = $1\n    GROUP BY o.id\n  `, [orderId]);\n  \n  return {\n    ...result.rows[0],\n    itemCount: parseInt(result.rows[0].itemCount)\n  };\n}\n```\n\n**优化效果**：\n- 查询次数从 2 次减少到 1 次\n- 减少网络往返开销\n- 将计数操作下推到数据库，更高效\n\n### 总结\n\n这两个优化的核心思想都是**减少数据库查询次数**：\n1. **批量获取**：用少数几次查询获取所有数据，然后在内存中处理\n2. **下推计算**：将计算逻辑放在数据库层面执行，减少数据传输\n\n这样的优化在高并发场景下效果会更明显，因为数据库连接池和网络开销往往是性能瓶颈的主要来源。",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 116032,
+      "costUsd": 0.0984675,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 3547,
+          "outputTokens": 1399,
+          "cacheReadInputTokens": 91515,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.0984675,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:57:34.133Z"
+    },
+    {
+      "taskId": "algorithm-boundary",
+      "config": "advisor",
+      "output": "Based on the advisor's analysis, here are the concrete issues and solutions:\n\n## 1. findMedianSortedArrays - Overflow Issue\n\n**Concrete Input Causing Overflow:**\n```javascript\nconst nums1 = [9007199254740990]; // MAX_SAFE_INTEGER - 1\nconst nums2 = [9007199254740991]; // MAX_SAFE_INTEGER\n// When computing: merged[mid-1] + merged[mid]\n// Result: 18014398509481981 > MAX_SAFE_INTEGER (2⁵³ - 1)\n// This loses precision and returns wrong median\n```\n\n## 2. kthSmallest - Off-by-One with Duplicates\n\n**Exact Failure Case:**\n```javascript\nconst matrix = [\n  [1, 1],\n  [1, 1]\n];\nconst k = 4; // k = matrix size (2×2 = 4)\n// Expected: 1 (4th smallest is 1)\n// Bug: Algorithm often returns wrong value due to counting logic\n```\n\n## 3. O(log(min(m,n))) Solution for findMedianSortedArrays\n\n```javascript\nfunction findMedianSortedArrays(nums1: number[], nums2: number[]): number {\n  // Ensure nums1 is the smaller array (min(m,n) complexity)\n  if (nums1.length > nums2.length) {\n    [nums1, nums2] = [nums2, nums1];\n  }\n\n  const m = nums1.length;\n  const n = nums2.length;\n  let low = 0;\n  let high = m;\n\n  while (low <= high) {\n    // Safe from overflow using subtract-then-divide\n    const i = low + Math.floor((high - low) / 2);\n    const j = Math.floor((m + n + 1) / 2) - i;\n\n    // Handle edge cases with -Infinity/+Infinity\n    const left1  = i === 0 ? -Infinity : nums1[i - 1];\n    const right1 = i === m ?  Infinity : nums1[i];\n    const left2  = j === 0 ? -Infinity : nums2[j - 1];\n    const right2 = j === n ?  Infinity : nums2[j];\n\n    if (left1 <= right2 && left2 <= right1) {\n      // Found the correct partition\n      if ((m + n) % 2 === 1) {\n        return Math.max(left1, left2);\n      }\n      // Use Math.min to avoid overflow in addition\n      return (Math.max(left1, left2) + Math.min(right1, right2)) / 2;\n    } else if (left1 > right2) {\n      // i is too large → move left\n      high = i - 1;\n    } else {\n      // i is too small → move right\n      low = i + 1;\n    }\n  }\n}\n```\n\n### Binary Search Approach Explanation:\n\n1. **Key Insight**: Instead of merging arrays (O(n log n)), binary search on the smaller array to find where to split both arrays so that:\n   - Left partition has (m+n+1)/2 elements\n   - All elements in left ≤ all elements in right\n\n2. **Partition Check**: For each partition point `i` in nums1:\n   - `j` is determined by `j = (m+n+1)/2 - i` \n   - Check if `nums1[i-1] <= nums2[j]` and `nums2[j-1] <= nums1[i]`\n\n3. **Complexity**: O(log(min(m,n))) - binary search only on the smaller array\n\n4. **Edge Handling**: Uses -Infinity/Infinity for out-of-bounds comparisons\n\nThe advisor also noted the kthSmallest fix requires returning `low` instead of `low+1` and proper handling of duplicate values in the counting logic.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 59670,
+      "costUsd": 0.1205645,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 7871,
+          "outputTokens": 1491,
+          "cacheReadInputTokens": 87869,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.1205645,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:58:33.804Z"
+    },
+    {
+      "taskId": "api-design-compatibility",
+      "config": "advisor",
+      "output": "Based on the advisor's guidance, here's the complete refactored implementation:\n\n```typescript\ninterface ConfigV1 {\n  host: string;\n  port: number;\n  useSSL: boolean;\n}\n\ninterface EnhancedConfig extends ConfigV1 {\n  timeout?: number;           // Override default 30s\n  retries?: number;           // Override default 3 attempts\n  headers?: Record<string, string>;  // Per-request headers\n  retryDelay?: number;        // Override default base delay (1000ms)\n  retryOn?: number[];         // Status codes that trigger retry\n  parseResponse?: boolean;     // Enable automatic JSON parsing\n}\n\ntype ConfigV2 = \n  | string                    // URL shorthand\n  | ConfigV1                  // Existing object format\n  | EnhancedConfig;           // Full features\n\nclass ApiClientError extends Error {\n  constructor(message: string, public code?: string) {\n    super(message);\n    this.name = 'ApiClientError';\n  }\n}\n\nclass TimeoutError extends ApiClientError {\n  constructor(message: string) {\n    super(message, 'TIMEOUT');\n    this.name = 'TimeoutError';\n  }\n}\n\nclass RetryError extends ApiClientError {\n  constructor(message: string, public attempt: number, public maxAttempts: number) {\n    super(message, 'RETRY');\n    this.name = 'RetryError';\n  }\n}\n\nclass ApiClient {\n  private config: EnhancedConfig;\n  private defaultTimeout = 30_000;\n  private defaultRetries = 3;\n  private baseHeaders: Record<string, string>;\n\n  constructor(config: ConfigV2) {\n    this.config = this.resolveConfig(config);\n    this.baseHeaders = {};\n  }\n\n  private resolveConfig(input: ConfigV2): EnhancedConfig {\n    if (typeof input === 'string') {\n      // Parse URL shorthand: \"https://api.example.com\" → ConfigV1\n      const url = new URL(input);\n      return {\n        host: url.hostname,\n        port: url.port || (url.protocol === 'https:' ? 443 : 80),\n        useSSL: url.protocol === 'https:',\n        timeout: this.defaultTimeout,\n        retries: this.defaultRetries,\n        headers: {},\n        retryOn: [408, 429, 500, 502, 503, 504],\n        parseResponse: false\n      };\n    }\n    \n    // Enhance ConfigV1 with defaults\n    return {\n      host: input.host,\n      port: input.port,\n      useSSL: input.useSSL,\n      timeout: this.defaultTimeout,\n      retries: this.defaultRetries,\n      headers: {},\n      retryOn: [408, 429, 500, 502, 503, 504],\n      parseResponse: false,\n      ...(input as EnhancedConfig) // Spread any additional properties\n    };\n  }\n\n  private mergeHeaders(base: Record<string, string>, override?: Record<string, string>): Record<string, string> {\n    const merged = { ...base };\n    if (override) {\n      for (const [key, value] of Object.entries(override)) {\n        merged[key] = value;\n      }\n    }\n    return merged;\n  }\n\n  private async executeRequest<T>(\n    method: string,\n    path: string,\n    config: EnhancedConfig,\n    body?: any\n  ): Promise<T | Response> {\n    const protocol = config.useSSL ? 'https' : 'http';\n    const url = `${protocol}://${config.host}:${config.port}${path}`;\n    const mergedHeaders = this.mergeHeaders(this.baseHeaders, config.headers);\n\n    const requestFn = async () => {\n      const controller = new AbortController();\n      const timeoutId = setTimeout(() => controller.abort(), config.timeout);\n      \n      try {\n        const response = await fetch(url, {\n          method,\n          body: body ? JSON.stringify(body) : undefined,\n          headers: mergedHeaders,\n          signal: controller.signal\n        });\n        \n        clearTimeout(timeoutId);\n        return response;\n      } catch (error) {\n        clearTimeout(timeoutId);\n        if (error.name === 'AbortError') {\n          throw new TimeoutError(`Request exceeded ${config.timeout}ms`);\n        }\n        throw error;\n      }\n    };\n\n    const maxAttempts = config.retries + 1; // +1 for initial attempt\n    const baseDelay = config.retryDelay ?? 1000;\n    const retryableStatuses = config.retryOn ?? [408, 429, 500, 502, 503, 504];\n\n    for (let attempt = 1; attempt <= maxAttempts; attempt++) {\n      try {\n        const response = await requestFn();\n        \n        if (response.ok || !retryableStatuses.includes(response.status) || attempt === maxAttempts) {\n          if (config.parseResponse && response.ok) {\n            return response.json() as Promise<T>;\n          }\n          return response;\n        }\n        \n        // Handle retryable status\n        let delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 100;\n        \n        // Special handling for 429 with Retry-After\n        if (response.status === 429) {\n          const retryAfter = response.headers.get('Retry-After');\n          if (retryAfter) {\n            delay = parseInt(retryAfter) * 1000;\n          }\n        }\n        \n        if (attempt < maxAttempts) {\n          await new Promise(resolve => setTimeout(resolve, delay));\n        }\n      } catch (error) {\n        if (attempt === maxAttempts || !(error instanceof TimeoutError)) {\n          throw error;\n        }\n        // Retry on timeout\n        if (attempt < maxAttempts) {\n          await new Promise(resolve => \n            setTimeout(resolve, baseDelay * Math.pow(2, attempt - 1))\n          );\n        }\n      }\n    }\n\n    throw new RetryError('Max retry attempts exceeded', maxAttempts, maxAttempts);\n  }\n\n  // Backward-compatible methods - existing call sites unchanged\n  async request(path: string, options?: { method?: string; body?: any }): Promise<Response> {\n    const resolvedConfig = this.resolveConfig(this.config);\n    return this.executeRequest<Response>(\n      options?.method ?? 'GET',\n      path,\n      resolvedConfig,\n      options?.body\n    );\n  }\n\n  async get(path: string): Promise<Response> {\n    return this.request(path);\n  }\n\n  async post(path: string, body: any): Promise<Response> {\n    return this.request(path, { method: 'POST', body });\n  }\n\n  // New enhanced methods with all features\n  async get<T>(path: string, config: EnhancedConfig & { parseResponse: true }): Promise<T>;\n  async get<T>(path: string, config?: EnhancedConfig): Promise<Response>;\n  async get<T>(path: string, config?: EnhancedConfig): Promise<T | Response> {\n    const mergedConfig = { ...this.config, ...config };\n    return this.executeRequest<T>('GET', path, mergedConfig);\n  }\n\n  async post<T>(path: string, body: any, config: EnhancedConfig & { parseResponse: true }): Promise<T>;\n  async post<T>(path: string, body: any, config?: EnhancedConfig): Promise<Response>;\n  async post<T>(path: string, body: any, config?: EnhancedConfig): Promise<T | Response> {\n    const mergedConfig = { ...this.config, ...config };\n    return this.executeRequest<T>('POST', path, mergedConfig, body);\n  }\n\n  // Utility methods\n  setDefaultHeaders(headers: Record<string, string>) {\n    this.baseHeaders = { ...this.baseHeaders, ...headers };\n  }\n}\n\n// Existing usage (unchanged - 50+ call sites still work):\nconst client = new ApiClient({ host: 'api.example.com', port: 443, useSSL: true });\nconst data = await client.get('/users');\nconst result = await client.post('/users', { name: 'Alice' });\n\n// New URL shorthand:\nconst client2 = new ApiClient('https://api.example.com');\nconst user = await client2.get<User>('/users/123', { parseResponse: true });\n\n// New enhanced features:\nconst client3 = new ApiClient({\n  host: 'api.example.com',\n  port: 443,\n  useSSL: true,\n  timeout: 5000,\n  retries: 2\n});\n\n// With custom headers and timeout\nconst response = await client3.get('/protected', {\n  headers: { 'Authorization': 'Bearer token' },\n  timeout: 10000\n});\n\n// With automatic JSON parsing\nconst user2 = await client3.post<User>('/users', {\n  name: 'Bob',\n  email: 'bob@example.com'\n}, { \n  parseResponse: true,\n  headers: { 'X-Request-ID': '123' }\n});\n```\n\n## Backward Compatibility Analysis\n\nThe refactoring maintains 100% backward compatibility through several key design choices:\n\n### 1. **Config Union Type**\nThe `ConfigV2` union supports all three formats:\n- **String**: `new ApiClient('https://api.example.com')` (new)\n- **ConfigV1**: `new ApiClient({ host: 'api.example.com', port: 443, useSSL: true })` (existing)\n- **EnhancedConfig**: All new features opt-in\n\n### 2. **Method Overloading**\nThe existing `get()` and `post()` methods maintain their original signatures and return types. They continue returning `Response` objects just like before.\n\n### 3. **No Breaking Changes to Existing API**\nAll 50+ existing call sites work identically:\n```typescript\n// These continue to work exactly as before\nconst client = new ApiClient({ host: 'api.example.com', port: 443, useSSL: true });\nconst data = await client.get('/users');\nconst result = await client.post('/users', { name: 'Alice' });\n```\n\n### 4. **Enhanced Methods Are Separate**\nNew typed methods don't overload existing ones. They're additional methods with slightly different signatures.\n\n### 5. **Default Values**\nAll new features have sensible defaults, so existing code doesn't need to specify them unless desired:\n- Timeout: 30s\n- Retries: 3 attempts\n- Retry delay: Exponential backoff starting at 1s\n- Retryable status codes: Standard 5xx, 429, and 408\n\n### 6. **Error Type Hierarchy**\nNew errors (`TimeoutError`, `RetryError`) extend the base `ApiClientError`, so existing error handling continues to work.\n\n### 7. **Header Merging Strategy**\nPer-request headers merge with (rather than replace) default headers, preserving existing behavior.\n\nThis approach allows gradual migration - existing code continues working while new code can leverage all the enhanced features when needed.",
+      "numTurns": 2,
+      "advisorCalled": true,
+      "durationMs": 79977,
+      "costUsd": 0.180446,
+      "modelUsage": {
+        "glm-4.5-air": {
+          "inputTokens": 7968,
+          "outputTokens": 3861,
+          "cacheReadInputTokens": 88162,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.180446,
+          "contextWindow": 128000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "timestamp": "2026-05-22T15:59:53.782Z"
+    }
+  ],
+  "soloJudge": [
+    {
+      "taskId": "concurrency-promise-all",
+      "config": "solo",
+      "scores": {
+        "root_cause": 4,
+        "fix_correct": 6,
+        "edge_cases": 4,
+        "specificity": 3
+      },
+      "weightedScore": 4.4,
+      "rawResponse": "```json\n{\n  \"root_cause\": 4,\n  \"fix_correct\": 6,\n  \"edge_cases\": 4,\n  \"specificity\": 3\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "security-sql-injection",
+      "config": "solo",
+      "scores": {
+        "root_cause": 7,
+        "fix_correct": 4,
+        "edge_cases": 5,
+        "specificity": 7
+      },
+      "weightedScore": 5.7,
+      "rawResponse": "```json\n{\n  \"root_cause\": 7,\n  \"fix_correct\": 4,\n  \"edge_cases\": 5,\n  \"specificity\": 7\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "typescript-generic-inference",
+      "config": "solo",
+      "scores": {
+        "root_cause": 2,
+        "fix_correct": 3,
+        "edge_cases": 1,
+        "specificity": 2
+      },
+      "weightedScore": 2.1,
+      "rawResponse": "```json\n{\"root_cause\": 2, \"fix_correct\": 3, \"edge_cases\": 1, \"specificity\": 2}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "performance-n-plus-1",
+      "config": "solo",
+      "scores": {
+        "root_cause": 9,
+        "fix_correct": 9,
+        "edge_cases": 8,
+        "specificity": 9
+      },
+      "weightedScore": 8.8,
+      "rawResponse": "```json\n{\n  \"root_cause\": 9,\n  \"fix_correct\": 9,\n  \"edge_cases\": 8,\n  \"specificity\": 9\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "algorithm-boundary",
+      "config": "solo",
+      "scores": {
+        "root_cause": 3,
+        "fix_correct": 2,
+        "edge_cases": 1,
+        "specificity": 3
+      },
+      "weightedScore": 2.3,
+      "rawResponse": "```json\n{\"root_cause\": 3, \"fix_correct\": 2, \"edge_cases\": 1, \"specificity\": 3}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "api-design-compatibility",
+      "config": "solo",
+      "scores": {
+        "root_cause": 4,
+        "fix_correct": 2,
+        "edge_cases": 2,
+        "specificity": 1
+      },
+      "weightedScore": 2.4,
+      "rawResponse": "```json\n{\n  \"root_cause\": 4,\n  \"fix_correct\": 2,\n  \"edge_cases\": 2,\n  \"specificity\": 1\n}\n```",
+      "parsedOk": true
+    }
+  ],
+  "advisorJudge": [
+    {
+      "taskId": "concurrency-promise-all",
+      "config": "advisor",
+      "scores": {
+        "root_cause": 4,
+        "fix_correct": 6,
+        "edge_cases": 5,
+        "specificity": 7
+      },
+      "weightedScore": 5.4,
+      "rawResponse": "```json\n{\n  \"root_cause\": 4,\n  \"fix_correct\": 6,\n  \"edge_cases\": 5,\n  \"specificity\": 7\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "security-sql-injection",
+      "config": "advisor",
+      "scores": {
+        "root_cause": 7,
+        "fix_correct": 8,
+        "edge_cases": 6,
+        "specificity": 8
+      },
+      "weightedScore": 7.3,
+      "rawResponse": "```json\n{\n  \"root_cause\": 7,\n  \"fix_correct\": 8,\n  \"edge_cases\": 6,\n  \"specificity\": 8\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "typescript-generic-inference",
+      "config": "advisor",
+      "scores": {
+        "root_cause": 3,
+        "fix_correct": 5,
+        "edge_cases": 2,
+        "specificity": 5
+      },
+      "weightedScore": 3.8,
+      "rawResponse": "```json\n{\n  \"root_cause\": 3,\n  \"fix_correct\": 5,\n  \"edge_cases\": 2,\n  \"specificity\": 5\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "performance-n-plus-1",
+      "config": "advisor",
+      "scores": {
+        "root_cause": 9,
+        "fix_correct": 8,
+        "edge_cases": 6,
+        "specificity": 9
+      },
+      "weightedScore": 8.1,
+      "rawResponse": "```json\n{\n  \"root_cause\": 9,\n  \"fix_correct\": 8,\n  \"edge_cases\": 6,\n  \"specificity\": 9\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "algorithm-boundary",
+      "config": "advisor",
+      "scores": {
+        "root_cause": 6,
+        "fix_correct": 7,
+        "edge_cases": 5,
+        "specificity": 7
+      },
+      "weightedScore": 6.3,
+      "rawResponse": "```json\n{\n  \"root_cause\": 6,\n  \"fix_correct\": 7,\n  \"edge_cases\": 5,\n  \"specificity\": 7\n}\n```",
+      "parsedOk": true
+    },
+    {
+      "taskId": "api-design-compatibility",
+      "config": "advisor",
+      "scores": {
+        "root_cause": 7,
+        "fix_correct": 5,
+        "edge_cases": 5,
+        "specificity": 7
+      },
+      "weightedScore": 6,
+      "rawResponse": "```json\n{\n  \"root_cause\": 7,\n  \"fix_correct\": 5,\n  \"edge_cases\": 5,\n  \"specificity\": 7\n}\n```",
+      "parsedOk": true
+    }
+  ],
+  "timestamp": "2026-05-22T16:01:27.381Z",
+  "config": {
+    "worker": "glm-4.5-air",
+    "advisor": "glm-5.1",
+    "judge": "glm-5.1"
+  }
+}

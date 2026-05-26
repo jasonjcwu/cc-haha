@@ -1,0 +1,13 @@
+{
+  "taskId": "concurrency-promise-all",
+  "config": "advisor",
+  "scores": {
+    "root_cause": 4,
+    "fix_correct": 6,
+    "edge_cases": 5,
+    "specificity": 7
+  },
+  "weightedScore": 5.4,
+  "rawResponse": "```json\n{\n  \"root_cause\": 4,\n  \"fix_correct\": 6,\n  \"edge_cases\": 5,\n  \"specificity\": 7\n}\n```",
+  "parsedOk": true
+}

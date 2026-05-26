@@ -1,0 +1,13 @@
+{
+  "taskId": "algorithm-boundary",
+  "config": "solo",
+  "scores": {
+    "root_cause": 3,
+    "fix_correct": 2,
+    "edge_cases": 1,
+    "specificity": 3
+  },
+  "weightedScore": 2.3,
+  "rawResponse": "```json\n{\"root_cause\": 3, \"fix_correct\": 2, \"edge_cases\": 1, \"specificity\": 3}\n```",
+  "parsedOk": true
+}

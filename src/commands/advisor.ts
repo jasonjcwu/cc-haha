@@ -6,6 +6,11 @@ import {
   modelSupportsAdvisor,
 } from '../utils/advisor.js'
 import {
+  isValidAdvisorModel as isValidClientAdvisorModel,
+  modelSupportsAdvisor as modelSupportsClientAdvisor,
+  isAdvisorEnabled as isAdvisorClientEnabled,
+} from '../utils/advisorClient.js'
+import {
   getDefaultMainLoopModelSetting,
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
@@ -28,7 +33,7 @@ const call: LocalCommandCall = async (args, context) => {
           'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor opus").',
       }
     }
-    if (!modelSupportsAdvisor(baseModel)) {
+    if (!modelSupportsAdvisor(baseModel) && !modelSupportsClientAdvisor(baseModel)) {
       return {
         type: 'text',
         value: `Advisor: ${current} (inactive)\nThe current model (${baseModel}) does not support advisors.`,
@@ -67,7 +72,7 @@ const call: LocalCommandCall = async (args, context) => {
     }
   }
 
-  if (!isValidAdvisorModel(resolvedModel)) {
+  if (!isValidAdvisorModel(resolvedModel) && !isValidClientAdvisorModel(resolvedModel)) {
     return {
       type: 'text',
       value: `The model ${arg} (${resolvedModel}) cannot be used as an advisor`,
@@ -80,7 +85,7 @@ const call: LocalCommandCall = async (args, context) => {
   })
   updateSettingsForSource('userSettings', { advisorModel: normalizedModel })
 
-  if (!modelSupportsAdvisor(baseModel)) {
+  if (!modelSupportsAdvisor(baseModel) && !modelSupportsClientAdvisor(baseModel)) {
     return {
       type: 'text',
       value: `Advisor set to ${normalizedModel}.\nNote: Your current model (${baseModel}) does not support advisors. Switch to a supported model to use the advisor.`,
@@ -98,9 +103,9 @@ const advisor = {
   name: 'advisor',
   description: 'Configure the advisor model',
   argumentHint: '[<model>|off]',
-  isEnabled: () => canUserConfigureAdvisor(),
+  isEnabled: () => canUserConfigureAdvisor() || isAdvisorClientEnabled(),
   get isHidden() {
-    return !canUserConfigureAdvisor()
+    return !canUserConfigureAdvisor() && !isAdvisorClientEnabled()
   },
   supportsNonInteractive: true,
   load: () => Promise.resolve({ call }),

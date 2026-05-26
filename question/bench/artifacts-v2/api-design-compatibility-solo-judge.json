@@ -1,0 +1,13 @@
+{
+  "taskId": "api-design-compatibility",
+  "config": "solo",
+  "scores": {
+    "root_cause": 4,
+    "fix_correct": 2,
+    "edge_cases": 2,
+    "specificity": 1
+  },
+  "weightedScore": 2.4,
+  "rawResponse": "```json\n{\n  \"root_cause\": 4,\n  \"fix_correct\": 2,\n  \"edge_cases\": 2,\n  \"specificity\": 1\n}\n```",
+  "parsedOk": true
+}

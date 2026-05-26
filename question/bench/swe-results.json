@@ -1,0 +1,175 @@
+{
+  "solo": [
+    {
+      "taskId": "SWE-001",
+      "config": "solo",
+      "resolved": true,
+      "reason": "All test cases pass",
+      "advisorCalls": 0,
+      "durationMs": 26025,
+      "totalCostUsd": 0.403605,
+      "inputTokens": 46981,
+      "outputTokens": 1217,
+      "cacheReadTokens": 276550
+    },
+    {
+      "taskId": "SWE-002",
+      "config": "solo",
+      "resolved": false,
+      "reason": "Got: a,b",
+      "advisorCalls": 0,
+      "durationMs": 53091,
+      "totalCostUsd": 0.5299765,
+      "inputTokens": 9451,
+      "outputTokens": 3612,
+      "cacheReadTokens": 717017
+    },
+    {
+      "taskId": "SWE-003",
+      "config": "solo",
+      "resolved": true,
+      "reason": "Deep merge correct",
+      "advisorCalls": 0,
+      "durationMs": 18661,
+      "totalCostUsd": 0.201593,
+      "inputTokens": 6680,
+      "outputTokens": 1318,
+      "cacheReadTokens": 270486
+    },
+    {
+      "taskId": "SWE-004",
+      "config": "solo",
+      "resolved": true,
+      "reason": "LRU eviction correct",
+      "advisorCalls": 0,
+      "durationMs": 22399,
+      "totalCostUsd": 0.2195025,
+      "inputTokens": 4165,
+      "outputTokens": 1516,
+      "cacheReadTokens": 321555
+    },
+    {
+      "taskId": "SWE-005",
+      "config": "solo",
+      "resolved": true,
+      "reason": "Debounce trailing+leading correct",
+      "advisorCalls": 0,
+      "durationMs": 22915,
+      "totalCostUsd": 0.240193,
+      "inputTokens": 7224,
+      "outputTokens": 1791,
+      "cacheReadTokens": 318596
+    },
+    {
+      "taskId": "SWE-006",
+      "config": "solo",
+      "resolved": true,
+      "reason": "Emitter correct, 2 listeners remain",
+      "advisorCalls": 0,
+      "durationMs": 52916,
+      "totalCostUsd": 0.516562,
+      "inputTokens": 10598,
+      "outputTokens": 4824,
+      "cacheReadTokens": 626951
+    },
+    {
+      "taskId": "SWE-007",
+      "config": "solo",
+      "resolved": true,
+      "reason": "Promise pool correct",
+      "advisorCalls": 0,
+      "durationMs": 32996,
+      "totalCostUsd": 0.366154,
+      "inputTokens": 8448,
+      "outputTokens": 2589,
+      "cacheReadTokens": 518378
+    }
+  ],
+  "advised": [
+    {
+      "taskId": "SWE-001",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "All test cases pass",
+      "advisorCalls": 0,
+      "durationMs": 23958,
+      "totalCostUsd": 0.4064895,
+      "inputTokens": 47615,
+      "outputTokens": 1116,
+      "cacheReadTokens": 281029
+    },
+    {
+      "taskId": "SWE-002",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "Iterator works correctly",
+      "advisorCalls": 0,
+      "durationMs": 54415,
+      "totalCostUsd": 0.5201435,
+      "inputTokens": 10334,
+      "outputTokens": 3840,
+      "cacheReadTokens": 677730
+    },
+    {
+      "taskId": "SWE-003",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "Deep merge correct",
+      "advisorCalls": 0,
+      "durationMs": 20988,
+      "totalCostUsd": 0.23036300000000004,
+      "inputTokens": 6866,
+      "outputTokens": 1383,
+      "cacheReadTokens": 322916
+    },
+    {
+      "taskId": "SWE-004",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "LRU eviction correct",
+      "advisorCalls": 0,
+      "durationMs": 23124,
+      "totalCostUsd": 0.237688,
+      "inputTokens": 7290,
+      "outputTokens": 1553,
+      "cacheReadTokens": 324826
+    },
+    {
+      "taskId": "SWE-005",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "Debounce trailing+leading correct",
+      "advisorCalls": 0,
+      "durationMs": 19875,
+      "totalCostUsd": 0.20000150000000003,
+      "inputTokens": 3963,
+      "outputTokens": 1611,
+      "cacheReadTokens": 279823
+    },
+    {
+      "taskId": "SWE-006",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "Emitter correct, 2 listeners remain",
+      "advisorCalls": 0,
+      "durationMs": 72047,
+      "totalCostUsd": 0.5278415,
+      "inputTokens": 5775,
+      "outputTokens": 3191,
+      "cacheReadTokens": 777905
+    },
+    {
+      "taskId": "SWE-007",
+      "config": "with-advisor",
+      "resolved": true,
+      "reason": "Promise pool correct",
+      "advisorCalls": 0,
+      "durationMs": 38689,
+      "totalCostUsd": 0.3991715,
+      "inputTokens": 8641,
+      "outputTokens": 2707,
+      "cacheReadTokens": 576583
+    }
+  ],
+  "timestamp": "2026-05-21T17:27:45.414Z"
+}

@@ -1,0 +1,13 @@
+{
+  "taskId": "security-sql-injection",
+  "config": "advisor",
+  "scores": {
+    "root_cause": 7,
+    "fix_correct": 8,
+    "edge_cases": 6,
+    "specificity": 8
+  },
+  "weightedScore": 7.3,
+  "rawResponse": "```json\n{\n  \"root_cause\": 7,\n  \"fix_correct\": 8,\n  \"edge_cases\": 6,\n  \"specificity\": 8\n}\n```",
+  "parsedOk": true
+}

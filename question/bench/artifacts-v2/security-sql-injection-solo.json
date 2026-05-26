@@ -1,0 +1,22 @@
+{
+  "taskId": "security-sql-injection",
+  "config": "solo",
+  "output": "## Security Vulnerabilities Found\n\n### 1. SQL Injection in `findByRole` function\n**Location**: Line 9, `findByRole` function\n```typescript\nconst query = `SELECT * FROM users WHERE role = '${role}'`;\n```\n\n**Exploit payload**: \n```sql\nadmin' OR '1'='1\n```\n\n**Full exploit**: If a caller passes `admin' OR '1'='1` as the role parameter, the resulting query becomes:\n```sql\nSELECT * FROM users WHERE role = 'admin' OR '1'='1'\n```\nThis returns ALL users in the database.\n\n### 2. SQL Injection in `searchUsers` function  \n**Location**: Lines 16-20, `searchUsers` function\n```typescript\nconst conditions = Object.entries(filters)\n  .map(([key, value]) => `${key} = '${value}'`)\n  .join(' AND ');\nconst query = `SELECT * FROM users WHERE ${conditions}`;\n```\n\n**Exploit payload**:\n```json\n{\n  \"role\": \"admin' --\",\n  \"status\": \"active\"\n}\n```\n\n**Full exploit**: This would generate:\n```sql\nSELECT * FROM users WHERE role = 'admin' -- ' AND status = 'active'\n```\nThe `--` comments out the rest of the query, returning all admin users regardless of status.\n\n## Why `getUserStats` is Safe\n\nThe `getUserStats` function uses **parameterized queries**:\n```typescript\nconst query = `SELECT * FROM get_user_stats($1)`;\nconst result = await this.pool.query(query, [userId]);\n```\n\n**Key differences**:\n1. **No string interpolation**: The query template doesn't include variables directly\n2. **Parameters are escaped**: The database driver properly escapes `userId` before execution\n3. **Clear separation**: SQL structure and data are handled separately\n\n## Why `searchUsers` is MORE Dangerous Than `findByRole`\n\nAlthough both functions are vulnerable, `searchUsers` is significantly more dangerous for several reasons:\n\n### 1. **Multiple Entry Points**\n`findByRole` has only one parameter to sanitize. `searchUsers` accepts arbitrary filters from a dictionary, potentially allowing dozens of injection points simultaneously.\n\n### 2. **Dynamic Column Selection**\nThe vulnerability allows attackers to not only inject SQL but also modify which columns are queried. Example:\n```json\n{\n  \"role\": \"admin'; DROP TABLE users; --\",\n  \"id\": \"1\"\n}\n```\n\n### 3. **Union-Based Attacks**\nAttackers can add columns to retrieve sensitive data:\n```json\n{\n  \"role\": \"admin' UNION SELECT credit_card, password FROM sensitive_data --\",\n  \"status\": \"active\"\n}\n```\n\n### 4. **Blind SQL Injection Potential**\nWith `searchUsers`, attackers can use time-based techniques:\n```json\n{\n  \"role\": \"admin' AND (SELECT COUNT(*) FROM pg_sleep(5)) > 0 --\"\n}\n```\n\n### 5. **Metadata Discovery**\nThe dynamic nature allows attackers to discover database structure:\n```json\n{\n  \"role\": \"admin' AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') --\"\n}\n```\n\n## Fix Recommendation\n\nBoth vulnerable functions should be rewritten to use parameterized queries:\n```typescript\n// Safe version of findByRole\nasync findByRole(role: string): Promise<User[]> {\n  const query = 'SELECT * FROM users WHERE role = $1';\n  const result = await this.pool.query(query, [role]);\n  return result.rows;\n}\n\n// Safe version of searchUsers  \nasync searchUsers(filters: Record<string, string>): Promise<User[]> {\n  const conditions = Object.keys(filters).map((key, index) => \n    `${key} = $${index + 1}`\n  );\n  const query = `SELECT * FROM users WHERE ${conditions.join(' AND ')}`;\n  const values = Object.values(filters);\n  const result = await this.pool.query(query, values);\n  return result.rows;\n}\n```\n\nThe critical lesson here is that **any time you interpolate variables directly into SQL strings, you create SQL injection vulnerabilities**. Parameterized queries are the only reliable defense.",
+  "numTurns": 2,
+  "advisorCalled": true,
+  "durationMs": 20430,
+  "costUsd": 0.1067895,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 5562,
+      "outputTokens": 1436,
+      "cacheReadInputTokens": 86159,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.1067895,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:51:58.342Z"
+}

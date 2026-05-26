@@ -1,0 +1,58 @@
+[
+  {
+    "id": "django-13315",
+    "source": "SWE-bench Verified",
+    "difficulty": "medium",
+    "repo": "django/django",
+    "issue": "limit_choices_to on a ForeignKey can render duplicate options in formfield. If you pass a Q object as limit_choices_to on a ForeignKey field involving a join, you may end up with duplicate options in your form.",
+    "gold_summary": "The issue is in django/forms/models.py apply_limit_choices_to_to_formfield. When limit_choices_to uses Q objects with joins, the resulting queryset isn't calling .distinct(), causing duplicate entries in form fields."
+  },
+  {
+    "id": "django-14007",
+    "source": "SWE-bench Verified",
+    "difficulty": "hard",
+    "repo": "django/django",
+    "issue": "Database converters (from_db_value) not called for returning_fields on insert. Making a subclass of BigAutoField and adding from_db_value converter shows the converter is not invoked for fields in returning_fields during INSERT operations. The converter works fine for SELECT queries but is skipped when PostgreSQL returns the generated value via RETURNING clause.",
+    "gold_summary": "The issue is in django/db/backends/postgresql/operations.py. When PostgreSQL uses RETURNING clause for INSERT, the from_db_value converters are not applied to the returned values. The fix needs to apply converters to the returning fields in the INSERT result."
+  },
+  {
+    "id": "django-12708",
+    "source": "SWE-bench Verified",
+    "difficulty": "hard",
+    "repo": "django/django",
+    "issue": "Migration crashes deleting an index_together if there is a unique_together on the same fields. When you have both index_together and unique_together on the same fields in a Django model, trying to remove the index_together via migration crashes because it tries to remove an index that was already removed when unique_together was created (since unique constraints create an implicit index).",
+    "gold_summary": "The issue is in django/db/backends/postgresql/schema.py. RemoveIndexOperation doesn't check if the index was implicitly created by a unique constraint. The fix should skip removing the index if a corresponding unique constraint exists."
+  },
+  {
+    "id": "django-11885",
+    "source": "SWE-bench Verified",
+    "difficulty": "hard",
+    "repo": "django/django",
+    "issue": "Combine fast delete queries. When emulating ON DELETE CASCADE via on_delete=models.CASCADE, the deletion collector generates one DELETE query per related object type even when multiple types could be combined into a single query. This causes performance issues when deleting objects with many related types.",
+    "gold_summary": "The issue is in django/db/models/sql/deleter.py. The FastDeleteQuery compiler generates separate DELETE statements for each model type. The fix combines DELETE queries that target the same base table into a single query using UNION or subquery."
+  },
+  {
+    "id": "astropy-7671",
+    "source": "SWE-bench Verified",
+    "difficulty": "medium",
+    "repo": "astropy/astropy",
+    "issue": "minversion failures. The change in PR #7647 causes minversion to fail in certain cases. The function that compares version strings has a bug when handling version strings with different numbers of components, e.g. comparing '3.0' with '3.0.0' fails incorrectly.",
+    "gold_summary": "The issue is in astropy/utils/introspection.py minversion function. When comparing version tuples of different lengths, the comparison doesn't pad shorter tuples with zeros. The fix should normalize version tuples to the same length before comparison."
+  },
+  {
+    "id": "matplotlib-23412",
+    "source": "SWE-bench Verified",
+    "difficulty": "medium",
+    "repo": "matplotlib/matplotlib",
+    "issue": "offset dash linestyle has no effect in patch objects. When setting the linestyle on a patch object with a dash offset (e.g., (0, (5, 1)) with offset), the dash offset is ignored and the pattern renders as if offset were 0. This works correctly for Line2D objects but not for patches.",
+    "gold_summary": "The issue is in lib/matplotlib/patches.py. Patch.set_linestyle doesn't pass the dash offset to the renderer. The fix ensures the full dash pattern including offset is used when rendering patches."
+  },
+  {
+    "id": "django-16819",
+    "source": "SWE-bench Verified",
+    "difficulty": "medium",
+    "repo": "django/django",
+    "issue": "Reduce Add/RemoveIndex migration operations. When optimizing migrations, AddIndex and RemoveIndex operations on the same model with the same fields should be reducible (cancel each other out). Currently these operations are not reduced during migration optimization, leading to unnecessary operations in squashed migrations.",
+    "gold_summary": "The issue is in django/db/migrations/operations/models.py. AddIndex and RemoveIndex operations don't implement the reduce() method to recognize and cancel inverse operations. The fix adds reduce() methods that detect and eliminate redundant index add/remove pairs."
+  }
+]

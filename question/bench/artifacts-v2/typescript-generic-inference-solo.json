@@ -1,0 +1,22 @@
+{
+  "taskId": "typescript-generic-inference",
+  "config": "solo",
+  "output": "The core insight: TypeScript's generic type parameters are scoped to their function. When you call `wrapResult()`, it creates a new type context that doesn't automatically connect back to the original `T` from `processItems`. That's why Fix 2 - using the same `T` parameter in both places - works better.",
+  "numTurns": 5,
+  "advisorCalled": true,
+  "durationMs": 25113,
+  "costUsd": 0.1841565,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 5989,
+      "outputTokens": 1604,
+      "cacheReadInputTokens": 228223,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.1841565,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:52:23.456Z"
+}

@@ -1,0 +1,175 @@
+{
+  "solo": [
+    {
+      "id": "django__django-13315",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 14508,
+      "costUsd": 0.33469099999999996,
+      "generatedPatch": ""
+    },
+    {
+      "id": "astropy__astropy-7671",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 30169,
+      "costUsd": 0.31949449999999996,
+      "generatedPatch": ""
+    },
+    {
+      "id": "matplotlib__matplotlib-23412",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 120834,
+      "costUsd": 0,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-16819",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 24610,
+      "costUsd": 0.3643965,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-14007",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 67508,
+      "costUsd": 0.4011615,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-12708",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 46776,
+      "costUsd": 0.320809,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-11885",
+      "config": "solo",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 35482,
+      "costUsd": 0.3204175,
+      "generatedPatch": ""
+    }
+  ],
+  "advisor": [
+    {
+      "id": "django__django-13315",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 12646,
+      "costUsd": 0.30043749999999997,
+      "generatedPatch": ""
+    },
+    {
+      "id": "astropy__astropy-7671",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 29390,
+      "costUsd": 0.3325805,
+      "generatedPatch": ""
+    },
+    {
+      "id": "matplotlib__matplotlib-23412",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 20652,
+      "costUsd": 0.3069315,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-16819",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 78438,
+      "costUsd": 1.1495395,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-14007",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 54643,
+      "costUsd": 0.4326025,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-12708",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 33504,
+      "costUsd": 0.31968349999999995,
+      "generatedPatch": ""
+    },
+    {
+      "id": "django__django-11885",
+      "config": "advisor",
+      "fileRecall": 0,
+      "lineRecall": 0,
+      "linePrecision": 0,
+      "directionMatch": 0,
+      "score": 0,
+      "durationMs": 45533,
+      "costUsd": 0.3047765,
+      "generatedPatch": ""
+    }
+  ],
+  "timestamp": "2026-05-21T17:55:37.900Z"
+}

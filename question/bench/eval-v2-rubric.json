@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "dimensions": [
+    {
+      "id": "root_cause",
+      "question": "Did the answer correctly identify the root cause of the issue?",
+      "type": "score",
+      "weight": 3,
+      "scoring": "0=wrong, 3=partially correct, 5=correct but vague, 7=correct and specific, 10=correct with deep insight beyond the obvious"
+    },
+    {
+      "id": "fix_correct",
+      "question": "Is the proposed fix correct and complete?",
+      "type": "score",
+      "weight": 3,
+      "scoring": "0=no fix, 3=wrong approach, 5=partially correct, 7=correct fix, 10=correct fix with proper error handling and edge cases"
+    },
+    {
+      "id": "edge_cases",
+      "question": "Did the answer identify and address relevant edge cases?",
+      "type": "score",
+      "weight": 2,
+      "scoring": "0=none, 3=mentioned but not addressed, 5=some edge cases, 7=most edge cases, 10=all edge cases with concrete examples"
+    },
+    {
+      "id": "specificity",
+      "question": "Is the answer specific with code references (function names, line logic, exact changes)?",
+      "type": "score",
+      "weight": 2,
+      "scoring": "0=generic, 3=some specifics, 5=references specific functions, 7=shows exact code changes, 10=production-ready diff"
+    }
+  ],
+  "judge_instructions": "You are an expert code reviewer evaluating a developer's answer to a coding question. Score each dimension independently. Be strict — a score of 10 means the answer is production-ready with no improvements needed. A score of 5 is average. Do not give participation points — if something is wrong, score it low. Reference the gold answer for what a complete solution looks like, but do not require the exact same approach."
+}

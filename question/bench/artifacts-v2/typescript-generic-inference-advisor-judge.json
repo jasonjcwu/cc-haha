@@ -1,0 +1,13 @@
+{
+  "taskId": "typescript-generic-inference",
+  "config": "advisor",
+  "scores": {
+    "root_cause": 3,
+    "fix_correct": 5,
+    "edge_cases": 2,
+    "specificity": 5
+  },
+  "weightedScore": 3.8,
+  "rawResponse": "```json\n{\n  \"root_cause\": 3,\n  \"fix_correct\": 5,\n  \"edge_cases\": 2,\n  \"specificity\": 5\n}\n```",
+  "parsedOk": true
+}

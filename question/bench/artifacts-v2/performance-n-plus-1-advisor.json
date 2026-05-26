@@ -1,0 +1,22 @@
+{
+  "taskId": "performance-n-plus-1",
+  "config": "advisor",
+  "output": "## 性能问题诊断与优化方案\n\n### getOrdersWithDetails 方法分析\n\n**性能瓶颈：典型的 N+1 查询问题**\n\n- 初始查询：1 次（获取 500 个订单）\n- 循环中为每个订单查询 items：500 次\n- 循环中为每个订单查询 payments：500 次\n- **总计查询次数：1,001 次**\n\n这些查询都是**串行执行**的，每个查询都有网络往返时间，导致总耗时超过 30 秒。\n\n### 优化方案\n\n```typescript\nasync getOrdersWithDetails(userIds: string[]): Promise<OrderDetail[]> {\n  // 1. 获取所有符合条件的订单\n  const orders = await this.db.query(\n    'SELECT * FROM orders WHERE user_id = ANY($1)',\n    [userIds]\n  );\n\n  // 2. 批量获取所有相关订单项\n  const orderIds = orders.rows.map(order => order.id);\n  const items = await this.db.query(\n    'SELECT * FROM order_items WHERE order_id = ANY($1)',\n    [orderIds]\n  );\n  const payments = await this.db.query(\n    'SELECT * FROM payments WHERE order_id = ANY($1)',\n    [orderIds]\n  );\n\n  // 3. 在内存中建立映射关系\n  const itemMap = new Map<string, typeof items.rows>();\n  const paymentMap = new Map<string, typeof payments.rows>();\n  \n  items.rows.forEach(item => {\n    if (!itemMap.has(item.order_id)) {\n      itemMap.set(item.order_id, []);\n    }\n    itemMap.get(item.order_id)!.push(item);\n  });\n  \n  payments.rows.forEach(payment => {\n    if (!paymentMap.has(payment.order_id)) {\n      paymentMap.set(payment.order_id, []);\n    }\n    paymentMap.get(payment.order_id)!.push(payment);\n  });\n\n  // 4. 组装结果\n  return orders.rows.map(order => ({\n    order,\n    items: itemMap.get(order.id) || [],\n    payments: paymentMap.get(order.id) || [],\n  }));\n}\n```\n\n**优化效果**：\n- 查询次数从 1,001 次减少到 3 次\n- 预计执行时间从 30+ 秒降至 1 秒以内\n\n### getOrderSummary 方法分析\n\n**性能问题：不必要的网络往返和数据传输**\n\n该方法执行了 2 个独立的查询：\n1. 获取订单详情\n2. 单独计算订单项数量\n\n即使这些查询很快，网络往返的开销在大量调用时会累积成性能问题。\n\n### 优化方案\n\n```typescript\nasync getOrderSummary(orderId: string): Promise<OrderSummary> {\n  const result = await this.db.query(`\n    SELECT \n      o.*,\n      COUNT(oi.id) as itemCount\n    FROM orders o\n    LEFT JOIN order_items oi ON o.id = oi.order_id\n    WHERE o.id = $1\n    GROUP BY o.id\n  `, [orderId]);\n  \n  return {\n    ...result.rows[0],\n    itemCount: parseInt(result.rows[0].itemCount)\n  };\n}\n```\n\n**优化效果**：\n- 查询次数从 2 次减少到 1 次\n- 减少网络往返开销\n- 将计数操作下推到数据库，更高效\n\n### 总结\n\n这两个优化的核心思想都是**减少数据库查询次数**：\n1. **批量获取**：用少数几次查询获取所有数据，然后在内存中处理\n2. **下推计算**：将计算逻辑放在数据库层面执行，减少数据传输\n\n这样的优化在高并发场景下效果会更明显，因为数据库连接池和网络开销往往是性能瓶颈的主要来源。",
+  "numTurns": 2,
+  "advisorCalled": true,
+  "durationMs": 116032,
+  "costUsd": 0.0984675,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 3547,
+      "outputTokens": 1399,
+      "cacheReadInputTokens": 91515,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0984675,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:57:34.133Z"
+}

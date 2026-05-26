@@ -153,6 +153,12 @@ import {
   isValidAdvisorModel,
   modelSupportsAdvisor,
 } from "src/utils/advisor.js";
+import {
+  isAdvisorEnabled as isAdvisorClientEnabled,
+  getAdvisorModel as getAdvisorClientModel,
+  isValidAdvisorModel as isValidClientAdvisorModel,
+  modelSupportsAdvisor as modelSupportsClientAdvisor,
+} from "src/utils/advisorClient.js";
 import { getAgentContext } from "src/utils/agentContext.js";
 import { isClaudeAISubscriber } from "src/utils/auth.js";
 import {
@@ -1165,6 +1171,18 @@ async function* queryModel(
     }
   }
 
+  // Client-side advisor: enabled for non-first-party users or when explicitly configured.
+  // This adds the advisor tool as a regular client tool instead of a server tool.
+  let clientAdvisorModel: string | undefined;
+  if (!advisorModel && isAdvisorClientEnabled()) {
+    clientAdvisorModel = getAdvisorClientModel();
+    if (clientAdvisorModel) {
+      logForDebugging(
+        `[AdvisorTool] Client-side tool enabled with ${clientAdvisorModel} as the advisor model`,
+      );
+    }
+  }
+
   // Check if tool search is enabled (checks mode, model support, and threshold for auto mode)
   // This is async because it may need to calculate MCP tool description sizes for TstAuto mode
   let useToolSearch = await isToolSearchEnabled(
@@ -1413,7 +1431,7 @@ async function* queryModel(
         hasAppendSystemPrompt: options.hasAppendSystemPrompt,
       }),
       ...systemPrompt,
-      ...(advisorModel ? [ADVISOR_TOOL_INSTRUCTIONS] : []),
+      ...(advisorModel || clientAdvisorModel ? [ADVISOR_TOOL_INSTRUCTIONS] : []),
       ...(injectChromeHere ? [CHROME_TOOL_SEARCH_INSTRUCTIONS] : []),
     ].filter(Boolean),
   );

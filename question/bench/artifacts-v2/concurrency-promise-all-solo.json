@@ -1,0 +1,22 @@
+{
+  "taskId": "concurrency-promise-all",
+  "config": "solo",
+  "output": "## Root Causes and Fixes\n\n### Issue 1: Randomly Dropped Results\n\n**Root Cause**: `Promise.all()` fails fast - when one request fails, it rejects the entire promise, causing other pending requests to be abandoned even if they would have succeeded. This is especially common with high concurrency (50k URLs).\n\n**Fix**: Use `Promise.allSettled()` instead. This waits for all promises to complete regardless of individual failures, ensuring you get results from successful requests while capturing errors from failed ones.\n\n### Issue 2: 429 Fails Entire Batch\n\n**Root Cause**: The original code treats any non-200 response as an error. A 429 (Too Many Requests) status code isn't a server error - it's a rate limit that should trigger retries with exponential backoff.\n\n**Fix**: \n- Add retry logic specifically for 429 status codes\n- Implement `retry-after` header support\n- Use exponential backoff (1s, 2s, 4s, etc.) between retries\n- After max retries, return the 429 status instead of failing\n\n### Key Improvements Made:\n\n1. **Concurrency Control**: Process in batches of 50 instead of hitting 50k URLs simultaneously\n2. **Proper Error Handling**: No more silent drops - all failures are captured and returned\n3. **Rate Limit Handling**: Smart retries with `retry-after` header respect\n4. **Timeout Management**: Each request gets proper error handling without blocking others\n5. **Memory Efficiency**: Processing in batches prevents memory overflow with large datasets\n\nThe fix ensures you get a complete picture of which URLs succeeded and which failed, with proper error messages for the failures.",
+  "numTurns": 4,
+  "advisorCalled": true,
+  "durationMs": 48548,
+  "costUsd": 0.4007455,
+  "modelUsage": {
+    "glm-4.5-air": {
+      "inputTokens": 50480,
+      "outputTokens": 3062,
+      "cacheReadInputTokens": 143591,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.4007455,
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "timestamp": "2026-05-22T15:51:37.911Z"
+}

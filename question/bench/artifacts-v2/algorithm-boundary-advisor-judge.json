@@ -1,0 +1,13 @@
+{
+  "taskId": "algorithm-boundary",
+  "config": "advisor",
+  "scores": {
+    "root_cause": 6,
+    "fix_correct": 7,
+    "edge_cases": 5,
+    "specificity": 7
+  },
+  "weightedScore": 6.3,
+  "rawResponse": "```json\n{\n  \"root_cause\": 6,\n  \"fix_correct\": 7,\n  \"edge_cases\": 5,\n  \"specificity\": 7\n}\n```",
+  "parsedOk": true
+}
