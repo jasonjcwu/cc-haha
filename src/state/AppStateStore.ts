@@ -472,6 +472,7 @@ export function getDefaultAppState(): AppState {
     verbose: false,
     mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)
     mainLoopModelForSession: null,
+    advisorModel: getInitialSettings().advisorModel,
     statusLineText: undefined,
     expandedView: 'none',
     isBriefOnly: false,

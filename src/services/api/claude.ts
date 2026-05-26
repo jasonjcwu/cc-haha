@@ -1434,14 +1434,19 @@ async function* queryModel(
   // hash-based tracking per querySource (agent) from the messagesForAPI array
   const extraToolSchemas = [...(options.extraToolSchemas ?? [])];
   if (advisorModel) {
-    // Server tools must be in the tools array by API contract. Appended after
-    // toolSchemas (which carries the cache_control marker) so toggling /advisor
-    // only churns the small suffix, not the cached prefix.
+    // Use a regular tool definition for third-party API compatibility.
+    // The original 'advisor_20260301' server tool type only works with
+    // Anthropic's first-party API. Regular tools work with any provider.
     extraToolSchemas.push({
-      type: "advisor_20260301",
-      name: "advisor",
-      model: advisorModel,
-    } as unknown as BetaToolUnion);
+      type: 'custom',
+      name: 'advisor',
+      description: 'Consult a more capable model for strategic guidance. Call BEFORE substantive work.',
+      input_schema: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    } as unknown as BetaToolUnion)
   }
   const allTools = [...toolSchemas, ...extraToolSchemas];
 
