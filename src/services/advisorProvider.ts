@@ -143,17 +143,26 @@ export function createAdvisorProvider(config: AdvisorProviderConfig): AdvisorPro
 export function getAdvisorProviderConfig(model: string): AdvisorProviderConfig {
   const m = model.toLowerCase()
 
-  // Anthropic models — also covers GLM when accessed via ANTHROPIC_BASE_URL
+  // Anthropic models
   if (
     m.includes('claude') ||
     m.includes('opus') ||
     m.includes('sonnet') ||
-    m.includes('haiku') ||
-    m.includes('glm')
+    m.includes('haiku')
   ) {
     return {
       provider: 'anthropic',
       model,
+    }
+  }
+
+  // GLM (Zhipu AI) — OpenAI-compatible API
+  if (m.includes('glm')) {
+    return {
+      provider: 'openai-compatible',
+      model,
+      baseUrl: process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: process.env.GLM_API_KEY,
     }
   }
 

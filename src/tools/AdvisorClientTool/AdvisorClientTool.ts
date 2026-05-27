@@ -60,7 +60,7 @@ function extractTextFromContent(content: unknown): string {
             : Array.isArray(block.content)
               ? block.content.map((b: any) => b.text ?? '').join('')
               : ''
-          return `[Tool Result: ${inner.slice(0, 500)}]`
+          return `[Tool Result: ${inner.slice(0, 2000)}]`
         }
         if (block.type === 'thinking') return ''
         return ''
@@ -123,7 +123,7 @@ export const AdvisorClientTool = buildTool({
     // Convert conversation messages to simple text format
     const messages = context.messages
       .filter((msg: any) => msg.type === 'user' || msg.type === 'assistant')
-      .slice(-20) // Last 20 messages for context window budget
+      .slice(-40) // Last 40 messages for context window budget
       .map((msg: any) => ({
         role: msg.type === 'user' ? 'user' as const : 'assistant' as const,
         content: extractTextFromContent(msg.message ?? msg.content),
