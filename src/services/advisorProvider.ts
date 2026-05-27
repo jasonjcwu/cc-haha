@@ -157,11 +157,12 @@ export function getAdvisorProviderConfig(model: string): AdvisorProviderConfig {
   }
 
   // GLM (Zhipu AI) — OpenAI-compatible API
+  // Uses coding endpoint by default (for GLM 编码套餐)
   if (m.includes('glm')) {
     return {
       provider: 'openai-compatible',
       model,
-      baseUrl: process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+      baseUrl: process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/coding/paas/v4',
       apiKey: process.env.GLM_API_KEY,
     }
   }
