@@ -1,112 +1,85 @@
+# Advisor Strategy 评测方案
 
- 
+> 基于 cc-haha CLI (`bin/claude-haha`) + DeepSeek/GLM Anthropic 兼容端点
 
-  ┌─────────────────────┬───────────┬────────────┬────────────┬────────────────┐
-  │        方法         │   成本    │    速度    │  信号质量  │    适合场景    │
-  ├─────────────────────┼───────────┼────────────┼────────────┼────────────────┤
-  │ Patch Similarity    │ ~$0.35/题 │ 30s/题     │ 中（近似） │ 快速迭代，调参 │
-  ├─────────────────────┼───────────┼────────────┼────────────┼────────────────┤
-  │ LLM-as-Judge        │ ~$0.10/题 │ 5s/题      │ 中（主观） │ 大量题目的筛选 │
-  ├─────────────────────┼───────────┼────────────┼────────────┼────────────────┤
-  │ 自建 Bug 注入       │ ~$0.35/题 │ 30s/题     │ 高（精确） │ 验证特定能力   │
-  ├─────────────────────┼───────────┼────────────┼────────────┼────────────────┤
-  │ 真实 SWE-bench      │ ~$3-10/题 │ 5-15min/题 │ 最高       │ 最终验证       │
-  │ Docker              │           │            │            │                │
-  └─────────────────────┴───────────┴────────────┴────────────┴────────────────┘
+## 终点
 
-Phase 2：正式评测（5-7 天）
-2.1 评测规模
-级别	题目数	单配置成本（估）	总配置数	总成本（估）
-快速验证	6 (hard6)	~$0.5	11	~$6
-标准	30-50	~$5	11	~$55
-完整	300 (Lite)	~$30	11	~$330
-建议从 hard6 验证 → 30 题标准 → 视结果决定是否跑完整。
+**产出有数据支撑的博客/技术报告**，核心问题：
 
-2.2 评测指标
-每个配置跑完后记录：
+1. Advisor 模式对国产弱模型有效吗？
+2. Tool 模式 vs Injected 模式，哪种更好？
+3. 用 cc-haha CLI 作为 runner 跑评测是否可行？
 
-解决率 (% Resolved) — SWE-bench 标准
-Advisor 调用次数 — 平均每题调几次
-总 token 消耗 — executor tokens + advisor tokens
-单题成本 — $/task
-耗时 — wall-clock time per task
-2.3 关键实验设计
-实验 1：复现 Anthropic 结果（Baseline）
+## Claude 官方 advisor 机制
 
-Claude Haiku solo vs Haiku + Opus advisor
-Claude Sonnet solo vs Sonnet + Opus advisor
-预期：advisor 加分 2-5%（复现 Anthropic 的 2.7pp 提升）
+**server-side tool**，executor 自己决定何时调用：
 
-实验 2：跨模型 Advisor（创新点 ⭐）
-DeepSeek-Flash + Claude-Opus advisor（便宜 executor + 强 advisor）
-DeepSeek-Flash + DeepSeek-Chat advisor（全 DeepSeek 栈）
-GLM-5.1 + Claude-Opus advisor（国产 executor + 海外 advisor）
-GLM-5.1 + GLM-5.1 advisor（自配合，参照组）
-Claude-Haiku + DeepSeek-Chat advisor（Claude executor + 国产 advisor）
+```json
+{"type": "advisor_20260301", "name": "advisor", "model": "claude-opus-4-7"}
+```
 
-实验 3：Advisor 强度 vs Executor 强度的交互效应
-弱 executor (Haiku/Flash) + 强 advisor (Opus/DS-Chat) 的提升幅度
-vs 强 executor (Sonnet/DS-Chat) + 强 advisor 的提升幅度
-假设：弱 executor 提升更大（因为更多决策点需要 advisor）
+- 只支持 Claude 模型配对
+- API server 端自动转发完整对话
 
-实验 4：Advisor 调用频率与质量分析
-统计每题 advisor 被调几次
-分析 advisor 建议被采纳后的成功率
-区分"advisor 没被调" vs "advisor 被调了但建议没用"
+## 两种 Advisor 模式（cc-haha CLI 下的实现）
 
-2.4 输出数据格式
-json
-{
-  "config_id": "ds-flash_opus-advisor",
-  "executor": "deepseek-v4-flash",
-  "advisor": "claude-opus-4-7",
-  "eval_set": "swe-hard6",
-  "results": [
-    {
-      "instance_id": "django__django-12345",
-      "resolved": true,
-      "advisor_calls": 3,
-      "executor_tokens": 15000,
-      "advisor_tokens": 2000,
-      "cost_usd": 0.03,
-      "wall_time_s": 120
-    }
-  ],
-  "summary": {
-    "resolve_rate": 0.5,
-    "avg_advisor_calls": 2.8,
-    "avg_cost_usd": 0.025,
-    "total_cost_usd": 0.15
-  }
-}
-Phase 3：分析与输出（3-5 天）
-3.1 数据分析
-生成对比表格和图表：
+### Tool 模式（executor 自主决定）
 
-热力图：Executor × Advisor 矩阵，颜色 = 解决率
-性价比图：X=成本，Y=解决率，每个配置一个点
-提升幅度图：Solo 基线 vs + Advisor 的 delta
-Advisor 调用分析：频率分布、成功关联
-3.2 可能的输出形态
-最小可行输出：GitHub repo + README 表格 + 一条推文
+cc-haha CLI 原生支持 tool calling，但 DeepSeek/GLM Anthropic 端点**没有** `advisor_20260301`。
+所以 Tool 模式 = **Solo 模式**（无 advisor）。
 
-完整输出（如果有意思的发现）：
+### Injected 模式（外部强制注入）— 核心差异化
 
-博客文章（中英双语）→ obsidian → jiachen.lol
-包含数据对比图、发现、结论
-可能的话题：
-"跨模型 Advisor：DeepSeek executor + Claude advisor 比 Sonnet solo 更好更便宜？"
-"Advisor Strategy 不只是 Claude 的专利——通用 pattern 的实验验证"
-"当国产模型做 executor，Claude 做 advisor：成本效率的帕累托前沿"
+三阶段多轮 cc-haha CLI 调用 + 外部 advisor API：
 
-3.3 发表判断标准
-数据值得发表的条件（至少满足一个）：
+```
+题目 → Phase 1: cc-haha CLI 探索代码
+         → 外部 advisor API → 建议
+      → Phase 2: cc-haha CLI 实现（带 advisor 建议）
+         → 外部 advisor API → 建议
+      → Phase 3: cc-haha CLI 验证（带 advisor 建议）
+         → 提取最终 patch
+```
 
-跨模型 advisor 显著优于同栈 advisor（发现新的 cost-performance Pareto 前沿）
-弱 executor + 强 advisor 接近或超过强 executor solo（验证 Anthropic 的声称在跨模型场景也成立）
-发现某个模型做 advisor 特别好（或特别差），且原因可分析
-Advisor 调用模式有非直觉发现
+关键：外部 advisor 直接调 OpenAI SDK（不走 cc-haha CLI），省启动开销。
 
-如果以上都不满足——数据仍然有价值，写成技术报告即可，不必硬凑文章。
+## 测试集
 
-给 cc HAHA 提 pr advisor 功能
+hard6（6 题，快速验证集）：
+
+| 题号 | Instance | 仓库 | 难度 |
+|------|----------|------|------|
+| 1 | psf__requests-2931 | requests | MED |
+| 2 | sympy__sympy-11618 | sympy | MED |
+| 3 | pydata__xarray-2905 | xarray | MED |
+| 4 | scikit-learn__scikit-learn-25102 | sklearn | HARD |
+| 5 | django__django-10554 | django | HARD |
+| 6 | sphinx-doc__sphinx-11510 | sphinx | HARD |
+
+## 6 组配置
+
+| 组 | Executor | 模式 | Advisor | ~调用次数 |
+|---|---|---|---|---|
+| A | DS Flash | Solo | — | 6 |
+| B | DS Flash | Tool | DS Chat | 6（=Solo） |
+| C | DS Flash | Injected | DS Chat | 18（3轮×6） |
+| D | GLM Air | Solo | — | 6 |
+| E | GLM Air | Tool | GLM-5.1 | 6（=Solo） |
+| F | GLM Air | Injected | GLM-5.1 | 18（3轮×6） |
+
+变量控制：thinking 关、温度=0、1次运行、同厂配对。
+
+## 评测指标
+
+- **Patch Rate**：生成 patch 的比例（中间指标）
+- **Advisor Call Rate**：Injected 模式 core 指标
+- **Delta**：Solo vs Injected 的变化
+- **Token / Cost**：经济性
+
+## 实施规划
+
+详见 `question/eval/PLAN.md`
+
+## 最终产出
+
+给 cc-haha 提 PR（advisor 功能）+ 博客文章（中英双语）→ obsidian → jiachen.lol
