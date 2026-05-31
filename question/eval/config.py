@@ -1,7 +1,7 @@
 """
 Advisor Eval — Model configurations and API keys.
 
-Supports: DeepSeek (deepseek-chat, deepseek-v4-flash/pro), GLM (glm-5.1)
+Supports: DeepSeek (deepseek-v4-flash/pro), GLM (glm-4.5-air, glm-5-turbo, glm-5.1)
 All use OpenAI-compatible API.
 """
 
@@ -58,23 +58,23 @@ def _load_keys_from_hermes():
 _KEYS = _load_keys_from_hermes()
 
 MODELS = {
-    "deepseek-chat": ModelConfig(
-        name="deepseek-chat",
-        base_url=_KEYS.get("deepseek", {}).get("base_url", "https://api.deepseek.com/v1"),
-        api_key=_KEYS.get("deepseek", {}).get("api_key", os.environ.get("DEEPSEEK_API_KEY", "")),
-        max_tokens=8192,
-        supports_tools=True,
-        cost_per_million_input=0.27,
-        cost_per_million_output=1.10,
-    ),
     "deepseek-v4-flash": ModelConfig(
-        name="deepseek-chat",  # API model name (v4 aliased)
+        name="deepseek-v4-flash",
         base_url=_KEYS.get("deepseek", {}).get("base_url", "https://api.deepseek.com/v1"),
         api_key=_KEYS.get("deepseek", {}).get("api_key", os.environ.get("DEEPSEEK_API_KEY", "")),
         max_tokens=8192,
         supports_tools=True,
         cost_per_million_input=0.07,
         cost_per_million_output=0.30,
+    ),
+    "deepseek-v4-pro": ModelConfig(
+        name="deepseek-v4-pro",
+        base_url=_KEYS.get("deepseek", {}).get("base_url", "https://api.deepseek.com/v1"),
+        api_key=_KEYS.get("deepseek", {}).get("api_key", os.environ.get("DEEPSEEK_API_KEY", "")),
+        max_tokens=8192,
+        supports_tools=True,
+        cost_per_million_input=0.27,
+        cost_per_million_output=1.10,
     ),
     "glm-5.1": ModelConfig(
         name="glm-5.1",
@@ -94,6 +94,15 @@ MODELS = {
         cost_per_million_input=0.10,
         cost_per_million_output=0.10,
     ),
+    "glm-5-turbo": ModelConfig(
+        name="glm-5-turbo",
+        base_url=_KEYS.get("glm", {}).get("base_url", "https://open.bigmodel.cn/api/coding/paas/v4"),
+        api_key=_KEYS.get("glm", {}).get("api_key", os.environ.get("GLMCODE_API_KEY", "")),
+        max_tokens=4096,
+        supports_tools=True,
+        cost_per_million_input=0.20,
+        cost_per_million_output=0.80,
+    ),
 }
 
 
@@ -109,10 +118,10 @@ def get_model(name: str) -> ModelConfig:
 # Pre-defined executor/advisor pairs for evaluation
 EVAL_PAIRS = [
     # (executor, advisor) — None means no advisor
-    ("deepseek-chat", None),
-    ("deepseek-chat", "glm-5.1"),
-    ("deepseek-v4-flash", "glm-5.1"),
-    ("deepseek-v4-flash", "deepseek-chat"),
-    ("glm-5.1", None),
-    ("glm-5.1", "deepseek-chat"),
+    ("deepseek-v4-flash", None),
+    ("deepseek-v4-flash", "deepseek-v4-pro"),
+    ("glm-4.5-air", None),
+    ("glm-4.5-air", "glm-5.1"),
+    ("glm-5-turbo", None),
+    ("glm-5-turbo", "glm-5.1"),
 ]

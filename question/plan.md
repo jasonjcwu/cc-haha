@@ -50,13 +50,13 @@ export CLAUDE_CODE_ADVISOR_ENABLED=true
 export CLAUDE_CODE_ADVISOR_MODEL=claude-opus-4-7
 bun run ./bin/claude-haha
 
-# 或者用 DeepSeek
-export CLAUDE_CODE_ADVISOR_MODEL=deepseek-chat
+# 或者用 DeepSeek Pro
+export CLAUDE_CODE_ADVISOR_MODEL=deepseek-v4-pro
 export DEEPSEEK_API_KEY=xxx
 
 # 或者在 REPL 里用 /advisor 命令
 /advisor opus
-/advisor deepseek-chat
+/advisor deepseek-v4-pro
 ```
 
 ## 跑评测
@@ -73,12 +73,12 @@ DEEPSEEK_API_KEY=xxx GLM_API_KEY=xxx bun run question/bench/runner.ts
 
 | Worker (干活) | Advisor (审核) | 场景 |
 |---|---|---|
-| haiku-4.5 | (none) | 对照组：无 advisor |
-| haiku-4.5 | opus-4.7 | 经典 advisor 组合 |
-| haiku-4.5 | deepseek-v3 | 低成本组合 |
-| haiku-4.5 | glm-4 | 国产模型测试 |
-| sonnet-4.6 | (none) | 中端对照组 |
-| sonnet-4.6 | opus-4.7 | 高质量组合 |
+| deepseek-v4-flash | (none) | DeepSeek 对照组 |
+| deepseek-v4-flash | deepseek-v4-pro | DeepSeek 辅助对照 |
+| glm-4.5-air | (none) | GLM 弱模型对照组 |
+| glm-4.5-air | glm-5.1 | GLM 主实验：弱模型 + 强 advisor |
+| glm-5-turbo | (none) | GLM 中端模型对照组 |
+| glm-5-turbo | glm-5.1 | GLM 主实验：中端模型 + 强 advisor |
 
 ## Smoke Test 结果
 

@@ -3,8 +3,7 @@
 所有 prompt 设计为从 stdin 传给 `./bin/claude-haha --bare -p "..."`。
 """
 
-import json
-from pathlib import Path
+import re
 
 # ─── 通用模板 ─────────────────────────────────────────────────────────
 
@@ -30,101 +29,184 @@ def build_task_prompt(instance: dict) -> str:
 Start by exploring the repository structure."""
 
 
-# ─── Injected 模式 三阶段模板 ─────────────────────────────────────────
+# ─── Injected 模式：官方 advisor tool 近似复刻 ───────────────────────
 
-def build_exploration_prompt(instance: dict) -> str:
-    """Phase 1: 只探索不改代码"""
-    return f"""I need you to investigate a bug in the repository {instance['repo']}.
+ADVISOR_REQUEST_OPEN = "<advisor_request>"
+ADVISOR_REQUEST_CLOSE = "</advisor_request>"
 
-## Issue
-{instance.get('problem_statement', '')[:2000]}
+ADVISOR_TOOL_SIMULATION = f"""## Advisor Tool
+You have access to an advisor tool backed by a stronger model. The advisor only provides strategic guidance; it cannot read files, run commands, edit code, or produce user-facing output.
 
-## Instructions
-DO NOT write any code. Only explore and understand:
-1. Read the repository structure
-2. Find the relevant files related to the issue
-3. Identify the root cause location
-4. Note any existing tests for this area
+Use the advisor when a strategic decision would materially affect the solution, for example:
+- after identifying the likely root cause and before substantive edits
+- when choosing between competing fixes
+- when the current diff may be risky, broad, or inconsistent with the issue
+- before declaring a multi-step task complete, after file writes and test outputs are in the transcript
+- when tests fail and the next move is unclear
 
-Report your findings concisely. Focus on: root cause, affected files, and how to fix."""
+To call the advisor, output exactly:
+{ADVISOR_REQUEST_OPEN}
+Your concise question and the relevant evidence you want reviewed.
+{ADVISOR_REQUEST_CLOSE}
 
+Then stop. The runner will return advisor guidance and you will continue the task.
 
-def build_implementation_prompt(instance: dict, exploration: str, advisor_feedback: str) -> str:
-    """Phase 2: 实现修复，带探索结果和 advisor 建议"""
-    # Truncate long inputs
-    exploration = exploration[:4000]
-    advisor_feedback = advisor_feedback[:2000]
-
-    return f"""I need you to fix a bug in the repository {instance['repo']}.
-
-## Issue
-{instance.get('problem_statement', '')[:1500]}
-
-## Your Previous Exploration
-{exploration}
-
-## Advisor Feedback
-Your advisor has reviewed your exploration and suggests:
-{advisor_feedback}
-
-## Instructions
-1. Read the relevant files identified during exploration
-2. Implement the fix based on the advisor's guidance
-3. Make minimal, targeted changes
-4. Verify your changes
-5. Output the final patch between ```diff and ``` markers"""
+Do not call the advisor for routine file reads, mechanical edits, or obvious syntax fixes. Give advice serious weight, but adapt when a step fails empirically or primary-source evidence contradicts it. If repository evidence and advisor guidance conflict, ask one concise reconcile question instead of silently switching approaches. The issue statement is authoritative."""
 
 
-def build_verification_prompt(instance: dict, implementation_summary: str, advisor_feedback: str) -> str:
-    """Phase 3: 验证和完善"""
-    implementation_summary = implementation_summary[:3000]
-    advisor_feedback = advisor_feedback[:2000]
+def build_official_like_initial_prompt(instance: dict, max_advisor_calls: int = 3) -> str:
+    """Initial prompt for the dynamic advisor loop.
 
-    return f"""Review and verify the fix for {instance['repo']}.
+    This approximates the official advisor tool: the executor drives the task
+    and decides when to consult the advisor, capped by max_advisor_calls.
+    """
+    return f"""I need you to solve a bug in the repository {instance['repo']}.
 
 ## Issue
-{instance.get('problem_statement', '')[:1000]}
+{instance.get('problem_statement', '')[:3000]}
 
-## Your Implementation So Far
-{implementation_summary}
-
-## Advisor Review
-Your advisor has reviewed your changes and suggests:
-{advisor_feedback}
+{ADVISOR_TOOL_SIMULATION}
 
 ## Instructions
-1. Run any relevant tests
-2. Fix any remaining issues
-3. Ensure the fix is complete and correct
-4. Output the final patch between ```diff and ``` markers"""
+1. Drive the task end-to-end: explore, diagnose, edit, and verify.
+2. You may call the advisor up to {max_advisor_calls} times using the exact advisor_request tag.
+3. Prefer consulting once after root-cause analysis and before substantial edits.
+4. Keep changes minimal and targeted to the issue.
+5. Before finishing, inspect the diff and run focused tests. Report the exact tests and results.
+6. On a multi-step fix, ask the advisor for a final review after file writes and
+   test outputs are in the transcript and before declaring the task complete.
+7. Derive regression-test expectations from the issue's externally observable
+   behavior, not from the current implementation output. Never bless a suspicious
+   intermediate representation merely because the new code emits it.
+8. When finished, output the final patch between ```diff and ``` markers.
+
+Start by exploring the repository structure and relevant files."""
 
 
-def build_advisor_prompt(phase: str, context: str) -> str:
-    """外部 advisor 的 prompt"""
-    phase_labels = {
-        "exploration": "explored the codebase",
-        "implementation": "implemented the fix",
-        "verification": "verified the fix",
-    }
-    label = phase_labels.get(phase, phase)
+def build_official_like_continue_prompt(
+    instance: dict,
+    transcript: str,
+    advisor_feedback: str,
+    remaining_advisor_calls: int,
+    current_diff: str = "",
+) -> str:
+    """Continue the executor after an advisor response."""
+    return f"""Continue solving the bug in {instance['repo']}.
 
-    return f"""You are an expert code review advisor. An AI coding agent has {label} for a software engineering task.
+## Issue
+{instance.get('problem_statement', '')[:1800]}
 
-Review what was done and provide specific, actionable feedback:
+## Conversation So Far
+{transcript[-8000:]}
 
-{context[:5000]}
+## Current Diff
+```diff
+{current_diff[-5000:]}
+```
 
-Rules:
-- Be concise — max 300 words
-- Focus on concrete next steps
-- If on the right track, say so and suggest what to verify
-- If going wrong, explain why and redirect
-- Point out edge cases or tests to check"""
+## Advisor Guidance
+{advisor_feedback[:2500]}
+
+## Instructions
+Use the advisor guidance as strategic input, but the issue statement and repository evidence are authoritative.
+You have {remaining_advisor_calls} advisor call(s) remaining.
+Treat advisor review items as a checklist: inspect each item, either implement
+the correction or state the repository evidence that makes it unnecessary.
+Run focused tests after corrections. Do not claim tests passed unless you
+actually ran the command and saw a passing result.
+Derive test expectations from the issue's requested external behavior. If a
+new test merely records the current output, challenge whether it is masking the bug.
+If another strategic decision genuinely needs advisor input, use:
+{ADVISOR_REQUEST_OPEN}
+question
+{ADVISOR_REQUEST_CLOSE}
+
+Otherwise continue implementation and verification. When finished, output the final patch between ```diff and ``` markers."""
+
+
+def build_official_like_correction_prompt(
+    instance: dict,
+    transcript: str,
+    advisor_feedback: str,
+    remaining_advisor_calls: int,
+    current_diff: str = "",
+) -> str:
+    """Require an executor correction pass after an experimental forced review."""
+    return build_official_like_continue_prompt(
+        instance,
+        transcript,
+        advisor_feedback,
+        remaining_advisor_calls,
+        current_diff=current_diff,
+    ) + """
+
+## Mandatory Correction Checkpoint
+Do not finalize yet. Work through every advisor checklist item against the
+repository. Apply required corrections, then inspect the updated diff and run
+the most focused available tests. If you intentionally leave the diff
+unchanged, cite concrete repository evidence for each rejected checklist item."""
+
+
+def build_official_like_advisor_prompt(
+    instance: dict,
+    transcript: str,
+    advisor_request: str,
+    current_diff: str = "",
+) -> str:
+    """Prompt sent to the advisor model.
+
+    Mirrors the official role: short strategic plan/correction/stop signal,
+    no tool use, no user-facing answer.
+    """
+    return f"""You are a stronger advisor model supporting a lower-cost coding executor on a SWE-bench style bugfix.
+
+The executor drives the task and owns all file reads, commands, edits, and user-facing output. You do not call tools. Provide only strategic guidance for the executor.
+
+The issue statement is authoritative. Do not reject requested behavior merely because it changes defaults or public behavior. If the requested behavior appears risky, explain the risk and still identify the minimal path that satisfies the issue.
+
+## Issue
+{instance.get('problem_statement', '')[:3000]}
+
+## Executor's Advisor Request
+{advisor_request[:2000]}
+
+## Conversation / Evidence So Far
+{transcript[-9000:]}
+
+## Current Diff
+```diff
+{current_diff[-6000:]}
+```
+
+Keep the response under 100 words. Prioritize:
+1. Root-cause assessment
+2. The smallest behaviorally complete plan or correction
+3. Missing adjacent behavior: guards, hooks, branches, or related functions the executor may have overlooked
+4. Behavior-pipeline trace: for every helper, hook, callback, or printer path
+   newly relied on by the diff, follow the data one layer downstream and compare
+   against adjacent established paths. Check source, filtering, hooks/callbacks,
+   downstream consumers, and error fallbacks; challenge assumptions about behavior
+5. Tests to add/update/run, including exact expected output where relevant and the most focused regression command
+6. Test-oracle check: verify that proposed assertions encode the issue's external
+   behavior rather than copying a possibly wrong implementation result
+7. Diff reduction: identify edits that are unnecessary or too broad
+8. A stop signal only if the executor is clearly going in the wrong direction
+
+Be concrete and file/function specific. Do not produce a final patch."""
+
+
+def extract_advisor_request(text: str) -> str:
+    """Extract a pseudo advisor tool request from executor output."""
+    if not text:
+        return ""
+    pattern = rf"{ADVISOR_REQUEST_OPEN}\s*(.*?)\s*{ADVISOR_REQUEST_CLOSE}"
+    matches = re.findall(pattern, text, re.DOTALL)
+    if not matches:
+        return ""
+    return matches[-1].strip()
 
 
 # ─── Patch extraction ──────────────────────────────────────────────────
-
-import re
 
 def extract_patch(text: str) -> str:
     """从 cc-haha CLI stdout 中提取 git diff patch"""
@@ -132,14 +214,16 @@ def extract_patch(text: str) -> str:
         return ""
     patterns = [
         r'```diff\n(.*?)```',
-        r'```\n(.*?)```',
         r'(?:^|\n)(diff --git.*?)(?:\n\n|\Z)',
     ]
     for pat in patterns:
         matches = re.findall(pat, text, re.DOTALL)
         if matches:
             # Return longest match (most likely the real patch)
-            best = max(matches, key=len).strip()
+            diff_matches = [m.strip() for m in matches if "diff --git" in m]
+            if not diff_matches:
+                continue
+            best = max(diff_matches, key=len).strip()
             if len(best) > 20:
                 return best
     # Fallback: find diff --git line by line

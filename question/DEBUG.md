@@ -9,13 +9,16 @@ cd /root/cc-haha
 两个模型对应两个环境脚本，跑之前必须 source 对应脚本：
 
 ```bash
-# DeepSeek (群 A/B/C)
+# DeepSeek 辅助对照
 source scripts/set-env-ds.sh
-# → 模型映射: claude-sonnet/haiku → deepseek-v4-flash
+# → executor: --model haiku/sonnet → deepseek-v4-flash
+# → advisor: deepseek-v4-pro
 
-# GLM (群 D/E/F)
+# GLM 主实验
 source scripts/set-env-glm.sh
-# → 模型映射: claude-sonnet → glm-5.1, claude-haiku → glm-4.5-air
+# → executor: --model haiku → glm-4.5-air
+# → executor: --model sonnet → glm-5-turbo
+# → advisor: glm-5.1
 ```
 
 验证链路通不通：
@@ -55,6 +58,7 @@ print(json.dumps(d[0]))
 
 python3 question/eval/cc_haha_solo.py \
   --instance-json "$INSTANCE" \
+  --executor-model haiku \
   --timeout 600
 ```
 
@@ -70,7 +74,7 @@ source scripts/set-env-glm.sh
 
 ---
 
-## 方式二：跑 Injected 模式（三阶段 + advisor）
+## 方式二：跑 Injected 模式（official-like dynamic advisor）
 
 ```bash
 source scripts/set-env-ds.sh
@@ -83,30 +87,35 @@ print(json.dumps(d[0]))
 
 python3 question/eval/cc_haha_injected.py \
   --instance-json "$INSTANCE" \
+  --executor-model haiku \
   --advisor-model deepseek \
   --timeout 600
 ```
 
 **关键区别**：
-- `--advisor-model deepseek` → 用 DeepSeek Chat 做 advisor
+- `--executor-model haiku` → 用当前 provider 的弱档 executor（DS Flash 或 GLM Air）
+- `--executor-model sonnet` → 用当前 provider 的中档 executor（GLM Turbo）
+- `--advisor-model deepseek` → 用 DeepSeek v4 Pro 做 advisor
 - `--advisor-model glm` → 用 GLM-5.1 做 advisor
-- 执行过程中会打印: `Phase 1/3`, `Advisor 1/2`, `Phase 2/3`, 等进度
-- 耗时约 Solo 的 2-3 倍（多轮调用 + 2 次 advisor API）
+- executor 如需指导会输出 `<advisor_request>...</advisor_request>`，runner 捕获后调用 advisor
+- 执行过程中会打印: `Executor turn N`, `Advisor N`, 等进度
+- 默认最多 4 个 executor turns、3 次 advisor calls
+- 耗时约 Solo 的 1-4 倍，取决于 executor 是否调用 advisor
 
 ---
 
 ## 方式三：通过 runner 跑（自动按配置分组）
 
 ```bash
-# 跑 DS Solo + DS Tool 各 1 题
+# 跑 DeepSeek v4 Flash Solo 1 题
 source scripts/set-env-ds.sh
 python3 question/runner_cc_haha.py --mode solo --model ds --limit 1
 
-# 跑 DS Injected 1 题
+# 跑 DeepSeek v4 Flash + v4 Pro Injected 1 题
 source scripts/set-env-ds.sh
 python3 question/runner_cc_haha.py --mode injected --model ds --limit 1
 
-# 跑 GLM 全部模式 6 题（谨慎，耗时较长）
+# 跑 GLM 主实验 6 题（Air/Turbo × Solo/Injected，谨慎，耗时较长）
 source scripts/set-env-glm.sh
 python3 question/runner_cc_haha.py --mode all --model glm --limit 6
 ```
@@ -193,15 +202,7 @@ ls -la question/eval/results/
 
 ## 常见调试问题
 
-### 1. "ModuleNotFoundError: No module named 'openai'"
-
-Injected 模式需要 openai SDK：
-
-```bash
-pip install openai
-```
-
-### 2. 环境变量不对
+### 1. 环境变量不对
 
 ```bash
 # 检查当前环境
@@ -213,7 +214,7 @@ echo $ANTHROPIC_AUTH_TOKEN  # 这个应该为空
 unset ANTHROPIC_AUTH_TOKEN
 ```
 
-### 3. cc-haha 没找到
+### 2. cc-haha 没找到
 
 ```bash
 # 确保在项目根目录
@@ -221,13 +222,13 @@ cd /root/cc-haha
 ls -la bin/claude-haha
 ```
 
-### 4. 超时
+### 3. 超时
 
 - Solo 默认 timeout 600s（10 分钟）
-- Injected 也是 600s（三阶段均分，每个 phase ~200s）
+- Injected 默认 timeout 600s（最多 4 个 executor turns；每个 turn 至少 240s）
 - 复杂项目（sympy, sphinx）可能超时，调大 `--timeout 900`
 
-### 5. 生成的 patch 不完整
+### 4. 生成的 patch 不完整
 
 检查 extract_patch 是否匹配到：
 - cc-haha 输出中的 `\`\`\`diff` 代码块

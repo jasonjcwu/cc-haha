@@ -5,5 +5,5 @@ export ANTHROPIC_API_KEY="5e3490380f0b4f3eb3d4f7e6512596fd.YdJmkBGvxydCrqmP"
 unset ANTHROPIC_AUTH_TOKEN
 echo "🟢 GLM: ANTHROPIC_BASE_URL=$ANTHROPIC_BASE_URL"
 echo "   model mapping: claude-haiku -> glm-4.5-air"
-echo "   model mapping: claude-sonnet -> glm-5.1"
+echo "   model mapping: claude-sonnet -> glm-5-turbo"
 echo "   model mapping: claude-opus -> glm-5.1"
