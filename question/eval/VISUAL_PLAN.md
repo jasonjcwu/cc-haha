@@ -1,346 +1,149 @@
-# Advisor 评测可视化 + 题库 Dashboard
+# Advisor Eval Evidence Dashboard Plan
 
-> 基于 FastAPI + 纯 HTML/JS + SQLite，零构建步骤
+目标不是先做通用题库平台，而是把现有 advisor eval 结果整理成可汇报的数据证据，回答 `question/question.md` 里的问题：advisor 能力到底带来了什么。
 
-## 终点
+## 输出目标
 
-一个 **自带动态结果查看 + 题库管理 + 随机抽题** 的 Web 页面，跑完评测立即可视化分析。
+生成一个本地 evidence report/dashboard，能直接回答：
 
-**操作流：**
+1. 哪些 executor/advisor 组合有效。
+2. Solo vs Injected 在质量、速度、token、成本上的变化。
+3. official-like 默认策略 vs `--force-pre-final-review` 是否有稳定收益。
+4. 当前结论能否支撑继续扩大到 LongCat、Claude 官方组合或更多 benchmark。
 
-```
-题库 → 抽题 → 选配置 → 跑评测 → 自动展示结果
-                                ├─ 热力表 ✓/✗ + 耗时
-                                ├─ 调用链路图 + 费用明细
-                                └─ 历史平均（跨 run 聚合）
-```
+## 数据源
 
----
+| Source | 用途 |
+|---|---|
+| `question/eval/results/*.jsonl` | 单次 run 原始结果 |
+| `question/eval/results/all_*.json` | 同批次合并结果 |
+| `question/eval/results/summary_*.json` | deterministic summary |
+| `question/eval/results/judge_*.json` | LLM judge 质量评分 |
+| `question/eval/results/*report*.json` | 人工/脚本汇总报告 |
+| `question/eval/benchmark/hard6.json` | benchmark 题目元数据和 gold patch/test patch |
 
-## 架构
+先只读现有文件，不触发 runner，不做题库导入，不新增 BrowseComp/TB2 抽题功能。
 
-```
-FastAPI  ←  python -m uvicorn server:app --port 8888
-  │
-  ├─ GET    /api/instances          ← hard6 / 题库抽题结果
-  ├─ GET    /api/configs             ← 6组配置（A~F）
-  ├─ GET    /api/results?instances=..&configs=..  ← 选中结果
-  ├─ GET    /api/history?model=ds&instance=..     ← 跨 run 聚合
-  ├─ POST   /api/run                 ← 触发评测
-  │
-  ├─ GET    /api/question-bank/stats    ← 题库统计
-  ├─ GET    /api/question-bank/browse   ← 题库浏览/筛选
-  ├─ POST   /api/question-bank/import   ← 导入题库（JSONL/JSON）
-  ├─ POST   /api/question-bank/draw     ← 随机抽题
-  │
-  └─ Serve /static/index.html        ← 单页前端
-```
+## 核心指标
 
-**数据存储：**
+| 指标 | 说明 | 优先级 |
+|---|---|---|
+| `resolved_status` | gold/focused tests > judge pass/partial/fail > patch-only > timeout/unknown | P0 |
+| `patch_rate` | 只表示产出 patch，不等于解决问题 | P0 |
+| `advisor_call_rate` | injected 是否真的调用 advisor | P0 |
+| `avg_wall_seconds` | 平均耗时 | P0 |
+| `total_tokens` | 已记录总 token；缺失要标 partial | P0 |
+| `total_cost_usd` | 已记录成本；缺失要标 partial | P0 |
+| `correctness` | judge 正确性分 | P1 |
+| `minimality` | judge 最小改动分 | P1 |
+| `test_awareness` | judge 测试意识分 | P1 |
+| `timeouts` | timeout 次数和位置 | P1 |
+| `advisor_timing` | advisor 在第几 turn 调用、是否 forced review | P2 |
 
-| 存储 | 用途 | 位置 |
-|------|------|------|
-| `question/eval/results/*.jsonl` | 每 run 原始结果 | JSONL 文件（后向兼容） |
-| `question/eval/results/aggregator.db` | 聚合统计 + 题库 | SQLite |
+## 主视图
 
----
+### 1. Evidence Table
 
-## 页面布局
+每行是一个 `run group x instance x repeat`：
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  [Advisor Eval Dashboard]                                    │
-├─────────────┬────────────────────────────────────────────────┤
-│  题库 / 选题  │  选组合                                       │
-│              │                                               │
-│  ┌────────┐  │  [A] DS-Solo  [B] DS-Tool  [C] DS-Injected   │
-│  │ 题库标签页 │  [D] GLM-Solo [E] GLM-Tool [F] GLM-Injected  │
-│  │          │  ┌───────────────────────────────────────────┐ │
-│  │ 题型筛选: │  │  结果热力表                               │ │
-│  │ ■ SWE    │  │          A       B       C       D  ...  │ │
-│  │ □ BC     │  │  django  ✓138s  ✓140s  ✓95s    ✗       │ │
-│  │ □ TB2    │  │  requests ✗      ✗      ✓120s   ✗       │ │
-│  │          │  │  xarray   ✓200s  ...     ✗      ✓...    │ │
-│  │ 抽题:    │  └───────────────────────────────────────────┘ │
-│  │ 抽 [6] 题│                                               │
-│  │ [随机抽取]│  ┌───────────────────────────────────────────┐ │
-│  │          │  │  选中 django × DS-Injected 的详情         │ │
-│  │ 题库统计: │  │                                           │ │
-│  │ 总: 300  │  │  调用链：                                  │ │
-│  │ 已跑: 6  │  │   🟢 Expl. ─→ 🟡 Adv1 ─→ 🟢 Impl.       │ │
-│  │          │  │   ─→ 🟡 Adv2 ─→ 🟢 Verif.                │ │
-│  │ [刷新]   │  │   时间: 25s → 3s → 42s → 2s → 23s = 95s │ │
-│  │ [运行选中]│  │   花费: ¥0.027 (exec) + ¥0.003 (adv)     │ │
-│  │          │  └───────────────────────────────────────────┘ │
-│  └────────┘                                                 │
-│              ┌───────────────────────────────────────────┐  │
-│  历史平均     │  DS-Solo 历史平均（2 runs）               │  │
-│  DS-Solo:    │  ▓▓▓▓▓▓▓░░  solve: 67% (4/6→6/9)        │  │
-│   4/6 67%    │  ▓▓▓▓▓▓░   time: 162s → 155s ↓          │  │
-│   162s avg   └───────────────────────────────────────────┘  │
-└─────────────┴───────────────────────────────────────────────┘
-```
+| Instance | Group | Mode | Repeat | Status | Patch | Judge | Time | Tokens | Cost | Advisor Calls | Timeout |
+|---|---|---|---:|---|---|---|---:|---:|---:|---:|---:|
+| django__django-10914 | GLM-Turbo-Solo | solo | 1 | judged-pass | yes | pass | 138s | known | known | 0 | 0 |
+| django__django-10914 | GLM-Turbo-5.1-Injected | injected | 1 | judged-pass | yes | pass | 95s | known | known | 1 | 0 |
+| pydata__xarray-3364 | GLM-Turbo-5.1-Injected | injected | 1 | gold-fail | yes | partial | 600s | partial | partial | 1 | 1 |
 
----
+Status 规则：
 
-## 核心视图
+- `gold-pass`: gold/focused tests 全部通过。
+- `gold-fail`: gold/focused tests 有失败。
+- `judged-pass`: judge 给 pass，但没有 gold/focused tests。
+- `judged-partial`: judge 给 partial。
+- `judged-fail`: judge 给 fail。
+- `patch-only`: 有 patch 但无 judge/test 证据。
+- `no-patch`: 没有 patch。
+- `timeout`: run 或 phase timeout。
+- `unknown`: 数据不足。
 
-### 1. 结果热力表
+### 2. Group Summary
 
-| 题 \ 组合 | A DS-Solo | B DS-Tool | C DS-Injected | D GLM-Solo | ... |
-|---|---|---|---|---|---|
-| django-10914 | ✅ 138s | ✅ 140s | ✅ 95s | ❌ | ... |
-| requests-3362 | ❌ | ❌ | ✅ 120s | ❌ | ... |
-| xarray-3364 | ✅ 200s | ... | ... | ... | ... |
+| Group | N | Resolved | Judge Pass/Partial/Fail | Patch Rate | Advisor Call Rate | Avg Time | Known Tokens | Known Cost |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| GLM-Turbo-Solo | 6 | TBD | 3/3/0 | 6/6 | 0/6 | 141.9s | 9,171,733 | $6.947173 |
+| GLM-Turbo-5.1-Injected | 6 | TBD | 2/4/0 | 6/6 | 4/6 | 94.7s | partial | partial |
 
-- 每个单元格: ✓/✗ + 耗时
-- 颜色: 绿色(有patch) / 红色(无patch) 梯度
-- 点击单元格 → 展开详情面板
+这里的 `Resolved` 只能来自真实验证；没有真实验证时显示 `TBD`，不要用 patch rate 代替。
 
-### 2. 调用链路图
+### 3. Delta View
 
-```
-Solo（单次 cc-haha CLI 调用）:
-  ┌─────────────────────────────────┐
-  │  cc-haha --bare -p 完整prompt   │
-  │  └─ tool call 1: 读文件         │
-  │  └─ tool call 2: grep 搜索      │
-  │  └─ tool call 3: 编辑代码       │
-  │  总耗时: 138s  花费: ¥0.03     │
-  └─────────────────────────────────┘
+按同一 instance 对齐 solo/injected：
 
-Injected（3+2 次调用）:
-  ┌──────────┐   ┌──────────┐   ┌──────────┐
-  │ Phase 1  │──→│ Advisor  │──→│ Phase 2  │
-  │ 探索      │   │ ⚡审查     │   │ 实现      │
-  │ 25s ¥0.01│   │ 3s ¥0.00 │   │ 42s ¥0.02│
-  └──────────┘   └──────────┘   └────┬─────┘
-                                     │
-  ┌──────────┐   ┌──────────┐        │
-  │ Phase 3  │←──│ Advisor  │←───────┘
-  │ 验证      │   │ ⚡审查     │
-  │ 23s ¥0.01│   │ 2s ¥0.00 │
-  └──────────┘   └──────────┘
+| Instance | Family | Quality Delta | Time Delta | Token Delta | Advisor Calls | Note |
+|---|---|---:|---:|---:|---:|---|
+| django__django-10914 | GLM-Turbo | same/pass | faster | lower | 1 | clean win |
+| pydata__xarray-3364 | GLM-Turbo | worse/gold-fail | timeout | partial | 1 | patch exists but not resolved |
 
-  总计: 95s  |  Exec: ¥0.04  |  Advisor: ¥0.003  |  合计: ¥0.043
+### 4. Call Timeline
+
+对 injected run 展示 phase/advisor sequence：
+
+```text
+executor_turn_1 14.6s -> advisor 1 -> executor_turn_2 25.4s -> patch
 ```
 
-### 3. 历史平均面板
+从 `phases[]`、`advisor_calls[]`、`usage`、`total_cost_usd` 读取，不再假设固定三阶段。
 
-跨多个 run 的聚合统计:
+## 实现路线
 
-```
-DS-Solo (3 runs, 18 instances):
-  Solve Rate: ████████░░ 78% (14/18)
-  Avg Time:  ██████░░░░ 155s
-  Avg Cost:  ¥0.032/题
+### Step 1: Normalizer
 
-DS-Injected (2 runs, 12 instances):
-  Solve Rate: ██████░░░░ 67% (8/12)
-  Avg Time:  █████████░ 210s
-  Avg Cost:  ¥0.061/题 (+advisor ¥0.008)
-```
+新增一个只读脚本，例如 `question/eval/build_evidence_report.py`：
 
----
+- 扫描 `results/*.jsonl` 和 `all_*.json`。
+- 复用 `summarize_results.py` 的 patch/gold-file 解析逻辑。
+- 合并 judge JSON 中的 pass/partial/fail 和分数。
+- 输出 normalized JSON：`results/evidence_latest.json`。
 
-## 通用题库设计
+### Step 2: Markdown Report
 
-### 核心思路
+从 normalized JSON 生成：
 
-`benchmark_type` 作为第一分类键 + JSON `metadata` 兜住格式差异。
-
-**支持三种 benchmark：**
-
-| 类型 | 描述 | 评估方式 | 数量级 |
-|------|------|---------|--------|
-| SWE-bench | 代码仓库 bug fix | 生成 patch | 300+ |
-| BrowseComp | 浏览器检索难题 | 返回正确答案 | ~100 |
-| Terminal-Bench 2.0 | 终端环境任务 | Docker 内验证 | ~90 |
-
-### 通用 Schema
-
-```sql
-CREATE TABLE question_bank (
-    id              TEXT PRIMARY KEY,   -- "swe__django-10914" | "bc__q42" | "tb2__dna-assembly"
-    benchmark_type  TEXT NOT NULL,      -- "swe-bench" | "browse-comp" | "terminal-bench-2.0"
-    
-    title           TEXT,               -- 短标题
-    description     TEXT,               -- 完整问题描述
-    source          TEXT,               -- "hard6" | "swe-bench-lite" | "openai/simple-evals" | ...
-    difficulty      TEXT DEFAULT 'medium',  -- "easy" | "medium" | "hard"
-    
-    gold_answer     TEXT,               -- SWE gold patch / BC 答案 / TB2 oracle
-    evaluation_hint TEXT,               -- 自动验证方法
-    
-    run_count       INTEGER DEFAULT 0,  -- 已评测次数
-    last_result     TEXT,               -- "pass" | "fail" | null
-    avg_time        REAL DEFAULT 0.0,
-    
-    metadata        TEXT,               -- JSON: benchmark 类型特定数据
-    tags            TEXT,               -- JSON: 标签数组
-    
-    created_at      TEXT DEFAULT (datetime('now')),
-    updated_at      TEXT DEFAULT (datetime('now'))
-);
+```text
+question/eval/results/advisor_evidence_report.md
 ```
 
-### benchmark 类型 metadata 示例
+报告包含：
 
-**SWE-bench：**
-```json
-{
-  "repo": "django/django",
-  "base_commit": "e7fd69d051eaa67cb17f172a39b57253e9cb831a",
-  "test_patch": "diff --git a/tests/...",
-  "version": "3.0",
-  "FAIL_TO_PASS": ["test_override_file_upload_permissions"],
-  "PASS_TO_PASS": ["test_allowed_database_queries"]
-}
+- executive summary
+- group summary
+- solo vs injected delta
+- default vs force-pre-final-review delta
+- known evidence gaps
+- next run recommendations
+
+### Step 3: Optional Local Dashboard
+
+如果 Markdown 不够，再做零构建本地页面：
+
+```text
+python3 -m http.server 8888 --directory question/eval/static
 ```
 
-**BrowseComp：**
-```json
-{
-  "expected_answer": "2015-04-18",
-  "reference_urls": ["https://..."],
-  "answer_type": "date",
-  "needs_browsing": true
-}
+前端只读取 `evidence_latest.json`。不需要 FastAPI、SQLite、题库管理或在线触发 runner。
+
+## 暂不做
+
+- 不做通用题库管理。
+- 不做随机抽题 UI。
+- 不在 dashboard 里触发付费评测。
+- 不把 BrowseComp/Terminal-Bench 2.0 纳入当前 MVP。
+- 不用 `has_patch` 显示绿色成功。
+
+## 最终汇报口径
+
+当前已经可以抛出的结论形态：
+
+```text
+在 hard6 Turbo 小样本上，official-like advisor injected 相比 solo 明显降低平均耗时，并在已记录样本中降低 token/cost；但 judge 质量从 3 pass / 3 partial 降到 2 pass / 4 partial，尚不能证明 advisor 提升 patch 质量。下一步需要多题、多 seed，对比默认策略和 forced review，核心看 resolved rate，而不是 patch rate。
 ```
 
-**Terminal-Bench 2.0：**
-```json
-{
-  "docker_image": "ubuntu:22.04",
-  "setup_script": "apt-get install ...",
-  "verification_script": "python3 /app/verify.py",
-  "timeout_seconds": 600,
-  "oracle_command": "python3 /app/solve.py"
-}
-```
-
-### 题库 → Runner 分发
-
-```
-题库（SQLite）
-  │
-  ├─ type="swe-bench"    → cc_haha_solo.py / cc_haha_injected.py (clone repo + cc-haha CLI)
-  ├─ type="browse-comp"  → bc_runner.py (cc-haha + browser tool)
-  └─ type="terminal-bench-2.0" → tb2_runner.py (cc-haha + Docker)
-```
-
-### 题库 UI 交互
-
-```
-┌───────────────────────────────┐
-│  题库 Dashboard                │
-│                                │
-│  全部(300) │ SWE(250) │ BC(30) │ TB2(20) │
-│                                │
-│  筛选: [repo ▼] [difficulty ▼] │
-│  [☑ 只显示未跑过的]            │
-│                                │
-│  ┌─────────────────────────┐  │
-│  │  抽题                    │ │
-│  │  数量: [6]  类型: [全部 ▼]│ │
-│  │  [随机抽取]              │ │
-│  └─────────────────────────┘  │
-│                                │
-│  题库统计:                     │
-│  已跑: 6/300  通过率: 50%     │
-│                                │
-│  最近导入:                     │
-│  • hard6.json → 6 题 (swe)   │
-└───────────────────────────────┘
-```
-
----
-
-## API 端点清单
-
-```python
-# — 评测相关 —
-GET  /api/instances                        # hard6 / 当前选中题目
-GET  /api/configs                          # A~F 6组配置
-GET  /api/results?instances=x,y&configs=A,C  # 查询结果
-GET  /api/history?model=ds&instance=x      # 跨 run 聚合
-POST /api/run  body: {instances, configs}  # 触发评测
-
-# — 题库管理 —
-GET  /api/question-bank/stats              # 题库统计
-GET  /api/question-bank/browse?type=..&page=..&per_page=..   # 浏览
-POST /api/question-bank/import             # 从 JSONL/JSON 导入
-POST /api/question-bank/draw body: {count, types, unrun_only}  # 随机抽题
-```
-
----
-
-## 实现步骤
-
-```
-Step 0: 题库接入（~2h）
-  feat 0.1: SQLite question_bank 建表 + 导入 hard6.json
-  feat 0.2: 下载/导入脚本（SWE-bench lite, BrowseComp, TB2）
-  feat 0.3: API: /stats, /browse, /import, /draw
-  feat 0.4: 前端: 题库面板 + 抽题交互 + 类型筛选
-
-Step 1: SQLite schema + 结果导入（~30min）
-  feat 1.1: aggregator 建表（run_id, group, instance_id, has_patch, ...）
-  feat 1.2: 扫描 results/*.jsonl → 自动导入
-  feat 1.3: 去重处理（同 run_id 不重复导入）
-
-Step 2: FastAPI server（~1h）
-  feat 2.1: 端点: /instances, /configs, /results, /history
-  feat 2.2: 端点: /run（触发封装好的 runner）
-  feat 2.3: 静态文件 serve（/static/index.html）
-
-Step 3: 前端 HTML/JS（~1.5h）
-  feat 3.1: 左右分栏布局（CSS Grid）
-  feat 3.2: InstanceSelector + ConfigSelector 复选框
-  feat 3.3: 结果热力表（动态获取数据）
-  feat 3.4: 刷新/运行按钮 + 状态指示
-
-Step 4: 调用链路可视化（~1h）
-  feat 4.1: CSS/SVG 流程图
-  feat 4.2: Solo 模式链路
-  feat 4.3: Injected 模式 3+2 链路
-
-Step 5: 历史平均聚合（~30min）
-  feat 5.1: SQL query 跨 run 聚合
-  feat 5.2: 前端平均数据展示
-
-Step 6: "运行选中"触发评测（~30min）
-  feat 6.1: POST /run → subprocess runner
-  feat 6.2: 前端轮询进度
-
-Step 7: 费用估算（~15min）
-  feat 7.1: token 估算逻辑（按时间/按配置单价）
-  feat 7.2: 前端费用展示
-
-Step 8: 完善 + 文档（~15min）
-  feat 8.1: 启动脚本
-  feat 8.2: 更新 test.md / PLAN.md
-
-总计: ~7h
-```
-
----
-
-## 启动方式
-
-```bash
-cd /root/cc-haha/question/eval
-pip install fastapi uvicorn   # 首次
-python -m uvicorn server:app --port 8888
-# → http://localhost:8888
-```
-
----
-
-## 关键设计原则
-
-1. **零构建** — 纯 HTML + Vanilla JS，不依赖 npm/webpack
-2. **后向兼容** — `results/*.jsonl` 格式不改，`db.py` 定期扫描导入
-3. **题库与评测分离** — 题库管"有哪些题"，评测管"跑这些题"
-4. **extend by type** — benchmark_type 是路由和 runner 的第一键值
-5. **历史积累** — 每次跑完结果自动进入聚合，越跑统计越稳
+后续如果 LongCat 或 Claude 官方组合可跑，把它们作为新 family 加进同一张 evidence table，而不是另起一套指标。

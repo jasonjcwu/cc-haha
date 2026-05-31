@@ -27,6 +27,9 @@ e2e-*.png
 artifacts/quality-runs/
 artifacts/coverage/
 
+# Local advisor eval outputs
+question/eval/results/
+
 # Desktop build output
 desktop/dist/
 desktop/build-artifacts/
